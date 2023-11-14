@@ -29,7 +29,6 @@ class RedGymEnv(Env):
         self.s_path = config['session_path']
         self.save_final_state = config['save_final_state']
         self.print_rewards = config['print_rewards']
-        self.vec_dim = 4320 #1000
         self.headless = config['headless']
         self.num_elements = 20000 # max
         self.init_state = config['init_state']
@@ -50,6 +49,8 @@ class RedGymEnv(Env):
         self.s_path.mkdir(exist_ok=True)
         self.reset_count = 0
         self.all_runs = []
+
+        self.render_mode = "rgb_array"
 
         # Set this in SOME subclasses
         self.metadata = {"render.modes": []}
@@ -82,8 +83,8 @@ class RedGymEnv(Env):
             WindowEvent.RELEASE_BUTTON_B
         ]
 
-        self.output_shape = (36, 40, 3)
-        self.mem_padding = 2
+        self.output_shape = (36, 160, 3) # (36, 160, 3)
+        self.mem_padding = 10# 2
         self.memory_height = 8
         self.col_steps = 16
         self.output_full = (
@@ -91,6 +92,8 @@ class RedGymEnv(Env):
                             self.output_shape[1],
                             self.output_shape[2]
         )
+        self.vec_dim = self.output_shape[0] * self.output_shape[1] * self.output_shape[2] # 4320 #1000
+        
 
         # Set these in ALL subclasses
         self.action_space = spaces.Discrete(len(self.valid_actions))

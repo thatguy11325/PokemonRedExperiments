@@ -1,13 +1,24 @@
+import os
+import uuid
 from os.path import exists
 from pathlib import Path
-import uuid
-from red_gym_env import RedGymEnv
+
+import retro
+from red_gym_env_v2 import RedGymEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common import env_checker
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from tensorboard_callback import TensorboardCallback
+
+def make_retro_env(game, roms_path):
+    def _init():
+        retro.data.Integrations.add_custom_path(roms_path)
+        return retro.make(game, inttype=retro.data.Integrations.ALL, render_mode="rgb_array")
+    return _init
+
+
 
 def make_env(rank, env_conf, seed=0):
     """
@@ -42,13 +53,28 @@ if __name__ == '__main__':
     
     print(env_config)
     
-    num_cpu = 16  # Also sets the number of episodes per training iteration
-    env = SubprocVecEnv([make_env(i, env_config) for i in range(num_cpu)])
+    roms_path = os.path.join(os.getcwd(), "roms")
+    num_cpu = 4  # Also sets the number of episodes per training iteration
+    # print(retro.data.list_games(inttype=retro.data.Integrations.ALL))
+    env = SubprocVecEnv(
+        [make_env(i, env_config) for i in range(4)] +
+        # [make_retro_env('Tetris-GameBoy', roms_path)] +
+        # [make_retro_env('Asteroids-GameBoy', roms_path)] +
+        # [make_retro_env('GradiusTheInterstellarAssault-GameBoy', roms_path)] +
+        # [make_retro_env('BartSimpsonsEscapeFromCampDeadly-GameBoy', roms_path)]
+        # [make_retro_env('Airstriker-Genesis', roms_path)] +
+        # [make_retro_env('KirbysAdventure-Nes', roms_path)] +
+        # [retro.make('Breakout-Atari2600', roms_path)] +
+        # [make_retro_env('DonkeyKongCountry-Snes', roms_path)] +
+        # [make_retro_env('SpaceInvaders-Atari2600', roms_path)] +
+        # [make_retro_env('SonicTheHedgehog-Genesis', roms_path)] +
+        []
+    )
     
     checkpoint_callback = CheckpointCallback(save_freq=ep_length, save_path=sess_path,
                                      name_prefix='poke')
     
-    callbacks = [checkpoint_callback, TensorboardCallback()]
+    callbacks = [checkpoint_callback, TensorboardCallback(log_dir="./logs")]
 
     if use_wandb_logging:
         import wandb
@@ -72,7 +98,7 @@ if __name__ == '__main__':
         print('\nloading checkpoint')
         model = PPO.load(file_name, env=env)
         model.n_steps = ep_length
-        model.n_envs = num_cpu
+        model.n_envs = env.num_envs
         model.rollout_buffer.buffer_size = ep_length
         model.rollout_buffer.n_envs = num_cpu
         model.rollout_buffer.reset()
