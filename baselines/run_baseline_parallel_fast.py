@@ -40,6 +40,8 @@ if __name__ == "__main__":
     parser.add_argument("--use-wandb-logging", action="store_true")
     parser.add_argument("--ep-length", type=int, default=2048 * 10)
     parser.add_argument("--sess-id", type=str, default=str(uuid.uuid4())[:8])
+    parser.add_argument("--save-video", action='store_true')
+    parser.add_argument("--fast-video", action='store_true')
 
     args = parser.parse_args()
 
@@ -54,8 +56,8 @@ if __name__ == "__main__":
         "init_state": args.state_path,
         "max_steps": args.ep_length,
         "print_rewards": True,
-        "save_video": False,
-        "fast_video": True,
+        "save_video": args.save_video,
+        "fast_video": args.fast_video,
         "session_path": sess_path,
         "gb_path": args.rom_path,
         "debug": False,
