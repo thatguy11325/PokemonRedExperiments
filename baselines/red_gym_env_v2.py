@@ -17,6 +17,8 @@ event_flags_start = 0xD747
 event_flags_end = 0xD7F6 # 0xD761 # 0xD886 temporarily lower event flag range for obs input
 museum_ticket = (0xD754, 0)
 
+RESET_EXPLORATION_ACTION = WindowEvent.FULL_SCREEN_TOGGLE + 1
+
 class RedGymEnv(Env):
     def __init__(self, config=None):
         self.s_path = config["session_path"]
@@ -64,7 +66,8 @@ class RedGymEnv(Env):
             WindowEvent.PRESS_ARROW_UP,
             WindowEvent.PRESS_BUTTON_A,
             WindowEvent.PRESS_BUTTON_B,
-            WindowEvent.PRESS_BUTTON_START,
+            # WindowEvent.PRESS_BUTTON_START,
+            RESET_EXPLORATION_ACTION
         ]
 
         self.release_actions = [
@@ -74,7 +77,7 @@ class RedGymEnv(Env):
             WindowEvent.RELEASE_ARROW_UP,
             WindowEvent.RELEASE_BUTTON_A,
             WindowEvent.RELEASE_BUTTON_B,
-            WindowEvent.RELEASE_BUTTON_START
+            # WindowEvent.RELEASE_BUTTON_START
         ]
 
         # load event names (parsed from https://github.com/pret/pokered/blob/91dc3c9f9c8fd529bb6e8307b58b96efa0bec67e/constants/event_constants.asm)
@@ -245,14 +248,17 @@ class RedGymEnv(Env):
         return obs, new_reward, False, step_limit_reached, {}
     
     def run_action_on_emulator(self, action):
-        # press button then release after some steps
-        self.pyboy.send_input(self.valid_actions[action])
-        # disable rendering when we don't need it
-        if not self.save_video and self.headless:
-            self.pyboy._rendering(False)
+        if action == RESET_EXPLORATION_ACTION:
+            self.init_map_mem()
+        else:
+            # press button then release after some steps
+            self.pyboy.send_input(self.valid_actions[action])
+            # disable rendering when we don't need it
+            if not self.save_video and self.headless:
+                self.pyboy._rendering(False)
         for i in range(self.act_freq):
             # release action, so they are stateless
-            if i == 8:
+            if i == 8 and action < len(self.release_actions):
                 # release button
                 self.pyboy.send_input(self.release_actions[action])
             if self.save_video and not self.fast_video:
