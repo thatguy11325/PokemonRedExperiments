@@ -66,6 +66,13 @@ class TensorboardCallback(BaseCallback):
             merged_flags = {k: v for d in list_of_flag_dicts for k, v in d.items()}
             self.logger.record("trajectory/all_flags", json.dumps(merged_flags))
 
+            self.writer.add_histogram(
+                "action_hist", 
+                np.array(self.training_env.get_attr("action_hist")), 
+                self.n_calls,
+            )
+            self.writer.flush()
+
         return True
     
     def _on_training_end(self):
