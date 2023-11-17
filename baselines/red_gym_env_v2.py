@@ -18,6 +18,7 @@ event_flags_end = 0xD7F6 # 0xD761 # 0xD886 temporarily lower event flag range fo
 museum_ticket = (0xD754, 0)
 
 RESET_EXPLORATION_ACTION = WindowEvent.FULL_SCREEN_TOGGLE + 1
+RESET_NPC_EXPLORATION_ACTION = RESET_EXPLORATION_ACTION + 1
 
 class RedGymEnv(Env):
     def __init__(self, config=None):
@@ -33,6 +34,9 @@ class RedGymEnv(Env):
         self.frame_stacks = 3
         self.explore_weight = (
             1 if "explore_weight" not in config else config["explore_weight"]
+        )
+        self.explore_npc_weight = (
+            1 if "explore_npc_weight" not in config else config["explore_npc_weight"]
         )
         self.reward_scale = (
             1 if "reward_scale" not in config else config["reward_scale"]
@@ -67,7 +71,8 @@ class RedGymEnv(Env):
             WindowEvent.PRESS_BUTTON_A,
             WindowEvent.PRESS_BUTTON_B,
             # WindowEvent.PRESS_BUTTON_START,
-            RESET_EXPLORATION_ACTION
+            RESET_EXPLORATION_ACTION,
+            RESET_NPC_EXPLORATION_ACTION
         ]
 
         self.release_actions = [
@@ -128,6 +133,7 @@ class RedGymEnv(Env):
             self.pyboy.load_state(f)
 
         self.init_map_mem()
+        self.init_npc_mem()
 
         self.agent_stats = []
 
@@ -169,6 +175,9 @@ class RedGymEnv(Env):
 
     def init_map_mem(self):
         self.seen_coords = {}
+
+    def init_npc_mem(self):
+        self.seen_npcs = set()
 
     def render(self, reduce_res=True):
         game_pixels_render = self.screen.screen_ndarray()[:,:,0:1]  # (144, 160, 3)
@@ -248,12 +257,34 @@ class RedGymEnv(Env):
         self.step_count += 1
 
         return obs, new_reward, False, step_limit_reached, {}
+
+    def find_neighboring_npc(self, npc_bank, npc_id, player_direction, player_x, player_y):
+        npc_id = npc_id * 0x10
+        npc_bank = (npc_bank + 1) *  0x100
+        npc_y = self.pyboy.get_memory_value(0xC004 + npc_bank + npc_id)
+        npc_x = self.pyboy.get_memory_value(0xC006 + npc_bank + npc_id)
+        npc_direction = self.pyboy.get_memory_value(0xC009 + npc_bank + npc_id)
+        # check if npc is facing player
+        # 0 - down, 4 - up, 8 - left, 0xC - right
+        if (
+            (player_direction == 0 and npc_direction == 4) or 
+            (player_direction == 4 and npc_direction == 0) or
+            (player_direction == 8 and npc_direction == 0xC) or
+            (player_direction == 0xC and npc_direction == 8)
+            ):
+            # manhattan distance
+            return abs(npc_y - player_y) + abs(npc_x - player_x)
+
+        return 1000
+
     
     def run_action_on_emulator(self, action):
         self.action_hist[action] += 1
 
         if action == RESET_EXPLORATION_ACTION:
             self.init_map_mem()
+        elif action == RESET_NPC_EXPLORATION_ACTION:
+            self.init_npc_mem()
         else:
             # press button then release after some steps
             self.pyboy.send_input(self.valid_actions[action])
@@ -265,12 +296,33 @@ class RedGymEnv(Env):
             if i == 8 and action < len(self.release_actions):
                 # release button
                 self.pyboy.send_input(self.release_actions[action])
+
             if self.save_video and not self.fast_video:
                 self.add_video_frame()
             if i == self.act_freq - 1:
                 # rendering must be enabled on the tick before frame is needed
                 self.pyboy._rendering(True)
             self.pyboy.tick()
+            
+            # check if we are talking to someone
+            if self.pyboy.get_memory_value(0xCFC4):
+                # get information for player
+                player_direction = self.pyboy.get_memory_value(0xC109)
+                player_y = self.pyboy.get_memory_value(0xC104)
+                player_x = self.pyboy.get_memory_value(0xC106)
+                # get the npc who is closest to the player and facing them
+                # we go through all npcs because there are npcs like
+                # nurse joy who can be across a desk and still talk to you
+                # could probably do this in a single pass and keeping track of the closest
+                mindex = (0, 1)
+                minv = 1000
+                for npc_bank in range(2):
+                    for npc_id in range(1, 16):
+                        np_dist = self.find_neighboring_npc(npc_bank, npc_id, player_direction, player_x, player_y)
+                        if np_dist < minv:
+                            mindex = (npc_bank, npc_id)
+                self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex[0], mindex[1]))
+
         if self.save_video and self.fast_video:
             self.add_video_frame()
 
@@ -294,6 +346,7 @@ class RedGymEnv(Env):
                 "ptypes": self.read_party(),
                 "hp": self.read_hp_fraction(),
                 "coord_count": len(self.seen_coords),
+                "npc_count": len(self.seen_npcs),
                 "deaths": self.died_count,
                 "badge": self.get_badges(),
                 "event": self.progress_reward["event"],
@@ -539,6 +592,7 @@ class RedGymEnv(Env):
             "dead": self.reward_scale * self.died_count * -0.1,
             "badge": self.reward_scale * self.get_badges() * 5,
             "explore": self.reward_scale * self.explore_weight * len(self.seen_coords) * 0.005,
+            "explore_npcs": self.reward_scale * self.explore_npc_weight * len(self.seen_npcs) * 0.010,
         }
 
         return state_scores
