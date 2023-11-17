@@ -155,6 +155,8 @@ class RedGymEnv(Env):
         ])
 
         self.current_event_flags_set = {}
+        
+        self.action_hist = np.zeros(len(self.valid_actions))
 
         # experiment! 
         # self.max_steps += 128
@@ -248,6 +250,8 @@ class RedGymEnv(Env):
         return obs, new_reward, False, step_limit_reached, {}
     
     def run_action_on_emulator(self, action):
+        self.action_hist[action] += 1
+
         if action == RESET_EXPLORATION_ACTION:
             self.init_map_mem()
         else:
@@ -294,6 +298,7 @@ class RedGymEnv(Env):
                 "badge": self.get_badges(),
                 "event": self.progress_reward["event"],
                 "healr": self.total_healing_rew,
+                "action_hist": self.action_hist
             }
         )
 
