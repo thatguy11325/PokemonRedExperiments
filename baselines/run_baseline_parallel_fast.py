@@ -45,8 +45,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    sess_id = str(uuid.uuid4())[:8]
-    sess_path = Path(f"session_{sess_id}")
+    sess_path = Path(f"session_{args.sess_id}")
 
     env_config = {
         "headless": args.headless,
@@ -66,6 +65,7 @@ if __name__ == "__main__":
         "reward_scale": 4,
         "extra_buttons": False,
         "explore_weight": 3,  # 2.5
+        "explore_npc_weight": 5,  # 2.5
     }
 
     print(env_config)
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
         run = wandb.init(
             project="pokemon-train",
-            id=sess_id,
+            id=args.sess_id,
             config=env_config,
             sync_tensorboard=True,
             monitor_gym=True,
