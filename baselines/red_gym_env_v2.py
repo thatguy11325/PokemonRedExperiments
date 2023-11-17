@@ -313,14 +313,14 @@ class RedGymEnv(Env):
                 # get the npc who is closest to the player and facing them
                 # we go through all npcs because there are npcs like
                 # nurse joy who can be across a desk and still talk to you
-                # could probably do this in a single pass and keeping track of the closest
-                mindex = (0, 1)
+                mindex = (0, 0)
                 minv = 1000
                 for npc_bank in range(2):
                     for npc_id in range(1, 16):
-                        np_dist = self.find_neighboring_npc(npc_bank, npc_id, player_direction, player_x, player_y)
-                        if np_dist < minv:
+                        npc_dist = self.find_neighboring_npc(npc_bank, npc_id, player_direction, player_x, player_y)
+                        if npc_dist < minv:
                             mindex = (npc_bank, npc_id)
+                            minv = npc_dist
                 self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex[0], mindex[1]))
 
         if self.save_video and self.fast_video:
