@@ -105,7 +105,10 @@ class RedGymEnv(Env):
                 "events": spaces.MultiBinary((event_flags_end - event_flags_start) * 8),
                 "map": spaces.Box(low=0, high=255, shape=(
                     self.coords_pad*4,self.coords_pad*4, 1), dtype=np.uint8),
-                "recent_actions": spaces.MultiDiscrete([len(self.valid_actions)] * self.frame_stacks)
+                "recent_actions": spaces.MultiDiscrete([len(self.valid_actions)] * self.frame_stacks),
+                "seen_pokemon": spaces.MultiBinary(151),
+                "caught_pokemon": spaces.MultiBinary(151),
+                "moves_obtained": spaces.MultiBinary(0xA4)
             }
         )
 
@@ -157,6 +160,9 @@ class RedGymEnv(Env):
         self.died_count = 0
         self.party_size = 0
         self.step_count = 0
+        self.seen_pokemon = np.zeros(151, dtype=np.uint8)
+        self.caught_pokemon = np.zeros(151, dtype=np.uint8)
+        self.moves_obtained = np.zeros(0xA4, dtype=np.uint8)
 
         self.base_event_flags = sum([
                 self.bit_count(self.read_m(i))
@@ -211,7 +217,10 @@ class RedGymEnv(Env):
             "badges": np.array([int(bit) for bit in f"{self.read_m(0xD356):08b}"], dtype=np.int8),
             "events": np.array(self.read_event_bits(), dtype=np.int8),
             "map": self.get_explore_map()[:, :, None],
-            "recent_actions": self.recent_actions
+            "recent_actions": self.recent_actions,
+            "caught_pokemon": self.caught_pokemon,
+            "seen_pokemon": self.seen_pokemon,
+            "moves_obtained": self.moves_obtained,
         }
 
         return observation
@@ -358,7 +367,10 @@ class RedGymEnv(Env):
                 "badge": self.get_badges(),
                 "event": self.progress_reward["event"],
                 "healr": self.total_healing_rew,
-                "action_hist": self.action_hist
+                "action_hist": self.action_hist,
+                "caught_pokemon": sum(self.caught_pokemon),
+                "seen_pokemon": sum(self.seen_pokemon),
+                "moves_obtained": sum(self.moves_obtained),
             }
         )
 
@@ -601,6 +613,9 @@ class RedGymEnv(Env):
             "explore": self.reward_scale * self.explore_weight * len(self.seen_coords) * 0.01,
             "explore_npcs": self.reward_scale * self.explore_npc_weight * len(self.seen_npcs) * 0.00015,
             "explore_hidden_objs": self.reward_scale * self.explore_hidden_obj_weight * len(self.seen_hidden_objs) * 0.00015,
+            "seen_pokemon": self.reward_scale * sum(self.seen_pokemon) * 0.00010,
+            "caught_pokemon": self.reward_scale * sum(self.caught_pokemon) * 0.00010,
+            "moves_obtained": self.reward_scale * sum(self.moves_obtained) * 0.00010,
         }
 
         return state_scores
@@ -631,6 +646,33 @@ class RedGymEnv(Env):
                 self.total_healing_rew += heal_amount
             else:
                 self.died_count += 1
+
+    def update_pokedex(self):
+        for i in range(0xD30A - 0xD2F7):
+            caught_mem = self.pyboy.get_memory_value(i + 0xD2F7)
+            seen_mem = self.pyboy.get_memory_value(i + 0xD30A)
+            for j in range(8):
+                self.caught_pokemon[8*i + j] = 1 if caught_mem & (1 << j) else 0
+                self.seen_pokemon[8*i + j] = 1 if seen_mem & (1 << j) else 0
+
+    def update_moves_obtained(self):
+        # Scan party
+        for i in [0xD16B, 0xD197, 0xD1C3, 0xD1EF, 0xD21B, 0xD247]:
+            if self.pyboy.get_memory_value(i) != 0:
+                for j in range(4):
+                    move_id = self.pyboy.get_memory_value(i + j + 8)
+                    if move_id != 0:
+                        self.moves_obtained[move_id] = 1
+        # Scan current box (since the box doesn't auto increment in pokemon red)
+        num_moves = 4
+        box_struct_length = 25 * num_moves * 2
+        for i in range(0xda80):
+            offset = i*box_struct_length + 0xda96
+            if self.pyboy.get_memory_value(offset) != 0:
+                for j in range(4):
+                    move_id = self.pyboy.get_memory_value(offset + j + 8)
+                    if move_id != 0:
+                        self.moves_obtained[move_id] = 1
 
     def read_hp_fraction(self):
         hp_sum = sum([
