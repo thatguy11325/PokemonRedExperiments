@@ -134,8 +134,9 @@ class RedGymEnv(Env):
             self.pyboy.load_state(f)
 
         # lazy random seed setting
-        for _ in range(self.seed):
-            self.pyboy.tick()
+        if self.seed:
+            for _ in range(self.seed):
+                self.pyboy.tick()
 
         self.init_map_mem()
         self.init_npc_mem()
