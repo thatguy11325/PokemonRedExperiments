@@ -161,9 +161,9 @@ class RedGymEnv(Env):
         self.died_count = 0
         self.party_size = 0
         self.step_count = 0
-        self.seen_pokemon = np.zeros(151, dtype=np.uint8)
-        self.caught_pokemon = np.zeros(151, dtype=np.uint8)
-        self.moves_obtained = np.zeros(0xA4, dtype=np.uint8)
+        self.seen_pokemon = np.zeros(152, dtype=np.uint8)
+        self.caught_pokemon = np.zeros(152, dtype=np.uint8)
+        self.moves_obtained = np.zeros(0xA5, dtype=np.uint8)
 
         self.base_event_flags = sum([
                 self.bit_count(self.read_m(i))
