@@ -106,9 +106,9 @@ class RedGymEnv(Env):
                 "map": spaces.Box(low=0, high=255, shape=(
                     self.coords_pad*4,self.coords_pad*4, 1), dtype=np.uint8),
                 "recent_actions": spaces.MultiDiscrete([len(self.valid_actions)] * self.frame_stacks),
-                "seen_pokemon": spaces.MultiBinary(151),
-                "caught_pokemon": spaces.MultiBinary(151),
-                "moves_obtained": spaces.MultiBinary(0xA4)
+                "seen_pokemon": spaces.MultiBinary(152),
+                "caught_pokemon": spaces.MultiBinary(152),
+                "moves_obtained": spaces.MultiBinary(0xA5)
             }
         )
 
