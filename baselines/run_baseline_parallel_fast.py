@@ -1,4 +1,5 @@
 import argparse
+import random
 import multiprocessing
 import os
 import uuid
@@ -71,7 +72,7 @@ if __name__ == "__main__":
     print(env_config)
 
     roms_path = os.path.join(os.getcwd(), "roms")
-    env = SubprocVecEnv([make_env(i, env_config) for i in range(args.n_envs)])
+    env = SubprocVecEnv([make_env(i, env_config, seed=random.randint(0, 4096)) for i in range(args.n_envs)])
 
     checkpoint_callback = CheckpointCallback(
         save_freq=args.ep_length, save_path=sess_path, name_prefix="poke"

@@ -17,9 +17,6 @@ event_flags_start = 0xD747
 event_flags_end = 0xD7F6 # 0xD761 # 0xD886 temporarily lower event flag range for obs input
 museum_ticket = (0xD754, 0)
 
-RESET_EXPLORATION_ACTION = WindowEvent.FULL_SCREEN_TOGGLE + 1
-RESET_NPC_EXPLORATION_ACTION = RESET_EXPLORATION_ACTION + 1
-
 class RedGymEnv(Env):
     def __init__(self, config=None):
         self.s_path = config["session_path"]
@@ -37,6 +34,9 @@ class RedGymEnv(Env):
         )
         self.explore_npc_weight = (
             1 if "explore_npc_weight" not in config else config["explore_npc_weight"]
+        )
+        self.explore_hidden_obj_weight = (
+            1 if "explore_hidden_obj_weight" not in config else config["explore_hidden_obj_weight"]
         )
         self.reward_scale = (
             1 if "reward_scale" not in config else config["reward_scale"]
@@ -70,9 +70,7 @@ class RedGymEnv(Env):
             WindowEvent.PRESS_ARROW_UP,
             WindowEvent.PRESS_BUTTON_A,
             WindowEvent.PRESS_BUTTON_B,
-            # WindowEvent.PRESS_BUTTON_START,
-            RESET_EXPLORATION_ACTION,
-            RESET_NPC_EXPLORATION_ACTION
+            WindowEvent.PRESS_BUTTON_START,
         ]
 
         self.release_actions = [
@@ -82,7 +80,7 @@ class RedGymEnv(Env):
             WindowEvent.RELEASE_ARROW_UP,
             WindowEvent.RELEASE_BUTTON_A,
             WindowEvent.RELEASE_BUTTON_B,
-            # WindowEvent.RELEASE_BUTTON_START
+            WindowEvent.RELEASE_BUTTON_START
         ]
 
         # load event names (parsed from https://github.com/pret/pokered/blob/91dc3c9f9c8fd529bb6e8307b58b96efa0bec67e/constants/event_constants.asm)
@@ -132,8 +130,13 @@ class RedGymEnv(Env):
         with open(self.init_state, "rb") as f:
             self.pyboy.load_state(f)
 
+        # lazy random seed setting
+        for _ in range(self.seed):
+            self.pyboy.tick()
+
         self.init_map_mem()
         self.init_npc_mem()
+        self.init_hidden_obj_mem()
 
         self.agent_stats = []
 
@@ -178,6 +181,9 @@ class RedGymEnv(Env):
 
     def init_npc_mem(self):
         self.seen_npcs = set()
+    
+    def init_hidden_obj_mem(self):
+        self.seen_hidden_objs = set()
 
     def render(self, reduce_res=True):
         game_pixels_render = self.screen.screen_ndarray()[:,:,0:1]  # (144, 160, 3)
@@ -258,21 +264,21 @@ class RedGymEnv(Env):
 
         return obs, new_reward, False, step_limit_reached, {}
 
-    def find_neighboring_npc(self, npc_bank, npc_id, player_direction, player_x, player_y):
-        npc_id = npc_id * 0x10
-        npc_bank = (npc_bank + 1) *  0x100
-        npc_y = self.pyboy.get_memory_value(0xC004 + npc_bank + npc_id)
-        npc_x = self.pyboy.get_memory_value(0xC006 + npc_bank + npc_id)
-        npc_direction = self.pyboy.get_memory_value(0xC009 + npc_bank + npc_id)
-        # check if npc is facing player
+    
+    def find_neighboring_npc(self, npc_id, player_direction, player_x, player_y) -> int:
+
+        npc_y = self.pyboy.get_memory_value(0xC104 + (npc_id * 0x10))
+        npc_x = self.pyboy.get_memory_value(0xC106 + (npc_id * 0x10))
+    
+        # Check if player is facing the NPC (skip NPC direction)
         # 0 - down, 4 - up, 8 - left, 0xC - right
         if (
-            (player_direction == 0 and npc_direction == 4) or 
-            (player_direction == 4 and npc_direction == 0) or
-            (player_direction == 8 and npc_direction == 0xC) or
-            (player_direction == 0xC and npc_direction == 8)
-            ):
-            # manhattan distance
+            (player_direction == 0 and npc_x == player_x and npc_y > player_y) or
+            (player_direction == 4 and npc_x == player_x and npc_y < player_y) or
+            (player_direction == 8 and npc_y == player_y and npc_x < player_x) or
+            (player_direction == 0xC and npc_y == player_y and npc_x > player_x)
+        ):
+            # Manhattan distance
             return abs(npc_y - player_y) + abs(npc_x - player_x)
 
         return 1000
@@ -281,16 +287,11 @@ class RedGymEnv(Env):
     def run_action_on_emulator(self, action):
         self.action_hist[action] += 1
 
-        if action == RESET_EXPLORATION_ACTION:
-            self.init_map_mem()
-        elif action == RESET_NPC_EXPLORATION_ACTION:
-            self.init_npc_mem()
-        else:
-            # press button then release after some steps
-            self.pyboy.send_input(self.valid_actions[action])
-            # disable rendering when we don't need it
-            if not self.save_video and self.headless:
-                self.pyboy._rendering(False)
+        # press button then release after some steps
+        self.pyboy.send_input(self.valid_actions[action])
+        # disable rendering when we don't need it
+        if not self.save_video and self.headless:
+            self.pyboy._rendering(False)
         for i in range(self.act_freq):
             # release action, so they are stateless
             if i == 8 and action < len(self.release_actions):
@@ -304,8 +305,13 @@ class RedGymEnv(Env):
                 self.pyboy._rendering(True)
             self.pyboy.tick()
             
-            # check if we are talking to someone
-            if self.pyboy.get_memory_value(0xCFC4):
+        # check if the font is loaded
+        if self.pyboy.get_memory_value(0xCFC4):
+            # check if we are talking to a hidden object:
+            if self.pyboy.get_memory_value(0xCD3D) == 0x0 and self.pyboy.get_memory_value(0xCD3E) == 0x0:
+                # add hidden object to seen hidden objects
+                self.seen_hidden_objs.add((self.pyboy.get_memory_value(0xD35E), self.pyboy.get_memory_value(0xCD3F)))
+            else:
                 # get information for player
                 player_direction = self.pyboy.get_memory_value(0xC109)
                 player_y = self.pyboy.get_memory_value(0xC104)
@@ -313,15 +319,15 @@ class RedGymEnv(Env):
                 # get the npc who is closest to the player and facing them
                 # we go through all npcs because there are npcs like
                 # nurse joy who can be across a desk and still talk to you
-                mindex = (0, 0)
+                mindex = 0
                 minv = 1000
-                for npc_bank in range(2):
-                    for npc_id in range(1, 16):
-                        npc_dist = self.find_neighboring_npc(npc_bank, npc_id, player_direction, player_x, player_y)
-                        if npc_dist < minv:
-                            mindex = (npc_bank, npc_id)
-                            minv = npc_dist
-                self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex[0], mindex[1]))
+                for npc_id in range(1, self.pyboy.get_memory_value(0xD4E1)):
+                    npc_dist = self.find_neighboring_npc(npc_id, player_direction, player_x, player_y)
+                    if npc_dist < minv:
+                        mindex = npc_id
+                        minv = npc_dist
+                if mindex != 0:
+                    self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex))
 
         if self.save_video and self.fast_video:
             self.add_video_frame()
@@ -347,6 +353,7 @@ class RedGymEnv(Env):
                 "hp": self.read_hp_fraction(),
                 "coord_count": len(self.seen_coords),
                 "npc_count": len(self.seen_npcs),
+                "hidden_obj_count": len(self.seen_hidden_objs),
                 "deaths": self.died_count,
                 "badge": self.get_badges(),
                 "event": self.progress_reward["event"],
@@ -591,8 +598,9 @@ class RedGymEnv(Env):
             "op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
             "dead": self.reward_scale * self.died_count * -0.1,
             "badge": self.reward_scale * self.get_badges() * 5,
-            "explore": self.reward_scale * self.explore_weight * len(self.seen_coords) * 0.005,
-            "explore_npcs": self.reward_scale * self.explore_npc_weight * len(self.seen_npcs) * 0.010,
+            "explore": self.reward_scale * self.explore_weight * len(self.seen_coords) * 0.01,
+            "explore_npcs": self.reward_scale * self.explore_npc_weight * len(self.seen_npcs) * 0.00015,
+            "explore_hidden_objs": self.reward_scale * self.explore_hidden_obj_weight * len(self.seen_hidden_objs) * 0.00015,
         }
 
         return state_scores
