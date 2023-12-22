@@ -666,11 +666,12 @@ class RedGymEnv(Env):
                 for j in range(4):
                     move_id = self.pyboy.get_memory_value(i + j + 8)
                     if move_id != 0:
-                        self.moves_obtained[move_id] = 1
+                        if move_id != 0:
+                            self.moves_obtained[move_id] = 1
         # Scan current box (since the box doesn't auto increment in pokemon red)
         num_moves = 4
         box_struct_length = 25 * num_moves * 2
-        for i in range(0xda80):
+        for i in range(self.pyboy.get_memory_value(0xda80)):
             offset = i*box_struct_length + 0xda96
             if self.pyboy.get_memory_value(offset) != 0:
                 for j in range(4):
