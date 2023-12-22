@@ -8,7 +8,7 @@ from pathlib import Path
 
 from red_gym_env_v2 import RedGymEnv
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from tensorboard_callback import TensorboardCallback
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     print(env_config)
 
     roms_path = os.path.join(os.getcwd(), "roms")
-    env = DummyVecEnv([make_env(i, env_config, seed=random.randint(0, 4096)) for i in range(args.n_envs)])
+    env = SubprocVecEnv([make_env(i, env_config, seed=random.randint(0, 4096)) for i in range(args.n_envs)])
 
     checkpoint_callback = CheckpointCallback(
         save_freq=args.ep_length, save_path=sess_path, name_prefix="poke"
