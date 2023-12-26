@@ -8,7 +8,7 @@ from pathlib import Path
 
 from red_gym_env_v2 import RedGymEnv
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from tensorboard_callback import TensorboardCallback
@@ -43,6 +43,8 @@ if __name__ == "__main__":
     parser.add_argument("--sess-id", type=str, default=str(uuid.uuid4())[:8])
     parser.add_argument("--save-video", action='store_true')
     parser.add_argument("--fast-video", action='store_true')
+    parser.add_argument("--frame-stacks", type=int, default=4)
+    parser.add_argument("--policy", choices=["MultiInputPolicy", "CnnPolicy"], default="MultiInputPolicy2")
 
     args = parser.parse_args()
 
@@ -67,6 +69,8 @@ if __name__ == "__main__":
         "extra_buttons": False,
         "explore_weight": 3,  # 2.5
         "explore_npc_weight": 5,  # 2.5
+        "frame_stacks": args.frame_stacks,
+        "policy": args.policy,
     }
 
     print(env_config)
@@ -109,7 +113,7 @@ if __name__ == "__main__":
         model.rollout_buffer.reset()
     else:
         model = PPO(
-            "MultiInputPolicy",
+            args.policy,
             env,
             verbose=1,
             n_steps=args.ep_length // 8,

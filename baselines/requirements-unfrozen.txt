@@ -1,13 +1,12 @@
 stable_baselines3
+sb3-contrib
 gymnasium
-gym
 scikit-image
 scikit-learn
 pandas
 tqdm
 torch
 einops
-hnswlib
 numpy
 opencv-python
 seaborn

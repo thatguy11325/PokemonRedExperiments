@@ -6,7 +6,6 @@ import numpy as np
 from skimage.transform import downscale_local_mean
 import matplotlib.pyplot as plt
 from pyboy import PyBoy
-from pyboy.logger import log_level
 import mediapy as media
 from einops import repeat
 
@@ -28,7 +27,8 @@ class RedGymEnv(Env):
         self.max_steps = config["max_steps"]
         self.save_video = config["save_video"]
         self.fast_video = config["fast_video"]
-        self.frame_stacks = 3
+        self.frame_stacks = config["frame_stacks"]
+        self.policy = config["policy"]
         self.explore_weight = (
             1 if "explore_weight" not in config else config["explore_weight"]
         )
@@ -41,6 +41,7 @@ class RedGymEnv(Env):
         self.reward_scale = (
             1 if "reward_scale" not in config else config["reward_scale"]
         )
+        self.policy = config["policy"]
         self.instance_id = (
             str(uuid.uuid4())[:8]
             if "instance_id" not in config
@@ -96,25 +97,27 @@ class RedGymEnv(Env):
         
         self.enc_freqs = 8
 
-        self.observation_space = spaces.Dict(
-            {
-                "screens": spaces.Box(low=0, high=255, shape=self.output_shape, dtype=np.uint8),
-                "health": spaces.Box(low=0, high=1),
-                "level": spaces.Box(low=-1, high=1, shape=(self.enc_freqs,)),
-                "badges": spaces.MultiBinary(8),
-                "events": spaces.MultiBinary((event_flags_end - event_flags_start) * 8),
-                "map": spaces.Box(low=0, high=255, shape=(
-                    self.coords_pad*4,self.coords_pad*4, 1), dtype=np.uint8),
-                "recent_actions": spaces.MultiDiscrete([len(self.valid_actions)] * self.frame_stacks),
-                "seen_pokemon": spaces.MultiBinary(152),
-                "caught_pokemon": spaces.MultiBinary(152),
-                "moves_obtained": spaces.MultiBinary(0xA5)
-            }
-        )
+        if self.policy == "MultiInputPolicy":
+            self.observation_space = spaces.Dict(
+                {
+                    "screens": spaces.Box(low=0, high=255, shape=self.output_shape, dtype=np.uint8),
+                    "health": spaces.Box(low=0, high=1),
+                    "level": spaces.Box(low=-1, high=1, shape=(self.enc_freqs,)),
+                    "badges": spaces.MultiBinary(8),
+                    "events": spaces.MultiBinary((event_flags_end - event_flags_start) * 8),
+                    "map": spaces.Box(low=0, high=255, shape=(
+                        self.coords_pad*4,self.coords_pad*4, 1), dtype=np.uint8),
+                    "recent_actions": spaces.MultiDiscrete([len(self.valid_actions)] * self.frame_stacks),
+                    "seen_pokemon": spaces.MultiBinary(152),
+                    "caught_pokemon": spaces.MultiBinary(152),
+                    "moves_obtained": spaces.MultiBinary(0xA5)
+                }
+            )
+        elif self.policy == "CnnPolicy":
+            self.observation_space = spaces.Box(low=0, high=255, shape=self.output_shape, dtype=np.uint8)
 
         head = "headless" if config["headless"] else "SDL2"
 
-        log_level("ERROR")
         self.pyboy = PyBoy(
             config["gb_path"],
             debugging=False,
@@ -205,27 +208,28 @@ class RedGymEnv(Env):
         screen = self.render()
 
         self.update_recent_screens(screen)
+
+        if self.policy == "MultiInputPolicy":
+            # normalize to approx 0-1
+            level_sum = 0.02 * sum([
+                self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
+            ])
+
+            return {
+                "screens": self.recent_screens,
+                "health": np.array([self.read_hp_fraction()]),
+                "level": self.fourier_encode(level_sum),
+                "badges": np.array([int(bit) for bit in f"{self.read_m(0xD356):08b}"], dtype=np.int8),
+                "events": np.array(self.read_event_bits(), dtype=np.int8),
+                "map": self.get_explore_map()[:, :, None],
+                "recent_actions": self.recent_actions,
+                "caught_pokemon": self.caught_pokemon,
+                "seen_pokemon": self.seen_pokemon,
+                "moves_obtained": self.moves_obtained,
+            }
+        else:
+            return self.recent_screens
         
-        # normalize to approx 0-1
-        level_sum = 0.02 * sum([
-            self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
-        ])
-
-        observation = {
-            "screens": self.recent_screens,
-            "health": np.array([self.read_hp_fraction()]),
-            "level": self.fourier_encode(level_sum),
-            "badges": np.array([int(bit) for bit in f"{self.read_m(0xD356):08b}"], dtype=np.int8),
-            "events": np.array(self.read_event_bits(), dtype=np.int8),
-            "map": self.get_explore_map()[:, :, None],
-            "recent_actions": self.recent_actions,
-            "caught_pokemon": self.caught_pokemon,
-            "seen_pokemon": self.seen_pokemon,
-            "moves_obtained": self.moves_obtained,
-        }
-
-        return observation
-
     def step(self, action):
 
         if self.save_video and self.step_count == 0:
@@ -372,9 +376,9 @@ class RedGymEnv(Env):
                 "event": self.progress_reward["event"],
                 "healr": self.total_healing_rew,
                 "action_hist": self.action_hist,
-                "caught_pokemon": sum(self.caught_pokemon),
-                "seen_pokemon": sum(self.seen_pokemon),
-                "moves_obtained": sum(self.moves_obtained),
+                "caught_pokemon": int(sum(self.caught_pokemon)),
+                "seen_pokemon": int(sum(self.seen_pokemon)),
+                "moves_obtained": int(sum(self.moves_obtained)),
             }
         )
 
@@ -617,9 +621,9 @@ class RedGymEnv(Env):
             "explore": self.reward_scale * self.explore_weight * len(self.seen_coords) * 0.01,
             "explore_npcs": self.reward_scale * self.explore_npc_weight * len(self.seen_npcs) * 0.00015,
             "explore_hidden_objs": self.reward_scale * self.explore_hidden_obj_weight * len(self.seen_hidden_objs) * 0.00015,
-            "seen_pokemon": self.reward_scale * sum(self.seen_pokemon) * 0.00010,
-            "caught_pokemon": self.reward_scale * sum(self.caught_pokemon) * 0.00010,
-            "moves_obtained": self.reward_scale * sum(self.moves_obtained) * 0.00010,
+            "seen_pokemon": self.reward_scale * sum(self.seen_pokemon) * 0.000010,
+            "caught_pokemon": self.reward_scale * sum(self.caught_pokemon) * 0.000020,
+            "moves_obtained": self.reward_scale * sum(self.moves_obtained) * 0.000020,
         }
 
         return state_scores
