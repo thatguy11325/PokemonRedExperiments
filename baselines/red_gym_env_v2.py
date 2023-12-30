@@ -282,8 +282,8 @@ class RedGymEnv(Env):
         return obs, new_reward, False, step_limit_reached, {}
 
     def find_neighboring_sign(self, sign_id, player_direction, player_x, player_y) -> bool:
-        sign_y = self.pyboy.get_memory_value(0xD4B0 + (2 * sign_id))
-        sign_x = self.pyboy.get_memory_value(0xD4B0 + (2 * sign_id + 1))
+        sign_y = self.pyboy.get_memory_value(0xD4B1 + (2 * sign_id))
+        sign_x = self.pyboy.get_memory_value(0xD4B1 + (2 * sign_id + 1))
 
         # Check if player is facing the sign (skip sign direction)
         # 0 - down, 4 - up, 8 - left, 0xC - right
@@ -294,7 +294,7 @@ class RedGymEnv(Env):
             or (player_direction == 4 and sign_x == player_x and sign_y == player_y - 1)
             or (player_direction == 8 and sign_y == player_y and sign_x == player_x - 1)
             or (player_direction == 0xC and sign_y == player_y and sign_x == player_x + 1)
-        )
+        ) 
 
     def find_neighboring_npc(self, npc_id, player_direction, player_x, player_y) -> int:
         npc_y = self.pyboy.get_memory_value(0xC104 + (npc_id * 0x10))
@@ -356,7 +356,7 @@ class RedGymEnv(Env):
                     sign_id, player_direction, player_x_tiles, player_y_tiles
                 )
                 for sign_id in range(self.pyboy.get_memory_value(0xD4B0))
-            ):
+            ):        
                 pass
             else:
                 # get information for player
