@@ -45,6 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--fast-video", action='store_true')
     parser.add_argument("--frame-stacks", type=int, default=4)
     parser.add_argument("--policy", choices=["MultiInputPolicy", "CnnPolicy"], default="MultiInputPolicy2")
+    parser.add_argument("--vec-env-type", choices=["subproc", "dummy"], default="subproc")
 
     args = parser.parse_args()
 
@@ -76,7 +77,8 @@ if __name__ == "__main__":
     print(env_config)
 
     roms_path = os.path.join(os.getcwd(), "roms")
-    env = SubprocVecEnv([make_env(i, env_config, seed=random.randint(0, 4096)) for i in range(args.n_envs)])
+    vecenv_type = SubprocVecEnv if args.vec_env_type == "subproc" else DummyVecEnv
+    env = vecenv_type([make_env(i, env_config, seed=random.randint(0, 4096)) for i in range(args.n_envs)])
 
     checkpoint_callback = CheckpointCallback(
         save_freq=args.ep_length, save_path=sess_path, name_prefix="poke"
