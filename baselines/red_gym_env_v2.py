@@ -13,9 +13,7 @@ from gymnasium import Env, spaces
 from pyboy.utils import WindowEvent
 
 event_flags_start = 0xD747
-event_flags_end = (
-    0xD7F6  # 0xD761 # 0xD886 temporarily lower event flag range for obs input
-)
+event_flags_end = 0xD7F6  # 0xD761 # 0xD886 temporarily lower event flag range for obs input
 museum_ticket = (0xD754, 0)
 
 
@@ -32,25 +30,17 @@ class RedGymEnv(Env):
         self.fast_video = config["fast_video"]
         self.frame_stacks = config["frame_stacks"]
         self.policy = config["policy"]
-        self.explore_weight = (
-            1 if "explore_weight" not in config else config["explore_weight"]
-        )
+        self.explore_weight = 1 if "explore_weight" not in config else config["explore_weight"]
         self.explore_npc_weight = (
             1 if "explore_npc_weight" not in config else config["explore_npc_weight"]
         )
         self.explore_hidden_obj_weight = (
-            1
-            if "explore_hidden_obj_weight" not in config
-            else config["explore_hidden_obj_weight"]
+            1 if "explore_hidden_obj_weight" not in config else config["explore_hidden_obj_weight"]
         )
-        self.reward_scale = (
-            1 if "reward_scale" not in config else config["reward_scale"]
-        )
+        self.reward_scale = 1 if "reward_scale" not in config else config["reward_scale"]
         self.policy = config["policy"]
         self.instance_id = (
-            str(uuid.uuid4())[:8]
-            if "instance_id" not in config
-            else config["instance_id"]
+            str(uuid.uuid4())[:8] if "instance_id" not in config else config["instance_id"]
         )
         self.s_path.mkdir(exist_ok=True)
         self.full_frame_writer = None
@@ -60,10 +50,7 @@ class RedGymEnv(Env):
         self.all_runs = []
 
         self.essential_map_locations = {
-            v: i
-            for i, v in enumerate(
-                [40, 0, 12, 1, 13, 51, 2, 54, 14, 59, 60, 61, 15, 3, 65]
-            )
+            v: i for i, v in enumerate([40, 0, 12, 1, 13, 51, 2, 54, 14, 59, 60, 61, 15, 3, 65])
         }
 
         # Set this in SOME subclasses
@@ -106,15 +93,11 @@ class RedGymEnv(Env):
         if self.policy == "MultiInputPolicy":
             self.observation_space = spaces.Dict(
                 {
-                    "screens": spaces.Box(
-                        low=0, high=255, shape=self.output_shape, dtype=np.uint8
-                    ),
+                    "screens": spaces.Box(low=0, high=255, shape=self.output_shape, dtype=np.uint8),
                     "health": spaces.Box(low=0, high=1),
                     "level": spaces.Box(low=-1, high=1, shape=(self.enc_freqs,)),
                     "badges": spaces.MultiBinary(8),
-                    "events": spaces.MultiBinary(
-                        (event_flags_end - event_flags_start) * 8
-                    ),
+                    "events": spaces.MultiBinary((event_flags_end - event_flags_start) * 8),
                     "map": spaces.Box(
                         low=0,
                         high=255,
@@ -166,9 +149,7 @@ class RedGymEnv(Env):
         self.agent_stats = []
 
         self.explore_map_dim = 384
-        self.explore_map = np.zeros(
-            (self.explore_map_dim, self.explore_map_dim), dtype=np.uint8
-        )
+        self.explore_map = np.zeros((self.explore_map_dim, self.explore_map_dim), dtype=np.uint8)
 
         self.recent_screens = np.zeros(self.output_shape, dtype=np.uint8)
 
@@ -189,10 +170,7 @@ class RedGymEnv(Env):
         self.moves_obtained = np.zeros(0xA5, dtype=np.uint8)
 
         self.base_event_flags = sum(
-            [
-                self.bit_count(self.read_m(i))
-                for i in range(event_flags_start, event_flags_end)
-            ]
+            [self.bit_count(self.read_m(i)) for i in range(event_flags_start, event_flags_end)]
         )
 
         self.current_event_flags_set = {}
@@ -220,9 +198,9 @@ class RedGymEnv(Env):
     def render(self, reduce_res=True):
         game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]  # (144, 160, 3)
         if reduce_res:
-            game_pixels_render = (
-                downscale_local_mean(game_pixels_render, (2, 2, 1))
-            ).astype(np.uint8)
+            game_pixels_render = (downscale_local_mean(game_pixels_render, (2, 2, 1))).astype(
+                np.uint8
+            )
         return game_pixels_render
 
     def _get_obs(self):
@@ -233,10 +211,7 @@ class RedGymEnv(Env):
         if self.policy == "MultiInputPolicy":
             # normalize to approx 0-1
             level_sum = 0.02 * sum(
-                [
-                    self.read_m(a)
-                    for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
-                ]
+                [self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]]
             )
 
             return {
@@ -306,9 +281,7 @@ class RedGymEnv(Env):
 
         return obs, new_reward, False, step_limit_reached, {}
 
-    def find_neighboring_sign(
-        self, sign_id, player_direction, player_x, player_y
-    ) -> bool:
+    def find_neighboring_sign(self, sign_id, player_direction, player_x, player_y) -> bool:
         sign_y = self.pyboy.get_memory_value(0xD4B0 + (2 * sign_id))
         sign_x = self.pyboy.get_memory_value(0xD4B0 + (2 * sign_id + 1))
 
@@ -320,11 +293,7 @@ class RedGymEnv(Env):
             (player_direction == 0 and sign_x == player_x and sign_y == player_y + 1)
             or (player_direction == 4 and sign_x == player_x and sign_y == player_y - 1)
             or (player_direction == 8 and sign_y == player_y and sign_x == player_x - 1)
-            or (
-                player_direction == 0xC
-                and sign_y == player_y
-                and sign_x == player_x + 1
-            )
+            or (player_direction == 0xC and sign_y == player_y and sign_x == player_x + 1)
         )
 
     def find_neighboring_npc(self, npc_id, player_direction, player_x, player_y) -> int:
@@ -416,9 +385,7 @@ class RedGymEnv(Env):
 
     def append_agent_stats(self, action):
         x_pos, y_pos, map_n = self.get_game_coords()
-        levels = [
-            self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
-        ]
+        levels = [self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]]
         self.agent_stats.append(
             {
                 "step": self.step_count,
@@ -457,12 +424,10 @@ class RedGymEnv(Env):
 
         base_dir = self.s_path / Path("rollouts")
         base_dir.mkdir(exist_ok=True)
-        full_name = Path(
-            f"full_reset_{self.reset_count}_id{self.instance_id}"
-        ).with_suffix(".mp4")
-        model_name = Path(
-            f"model_reset_{self.reset_count}_id{self.instance_id}"
-        ).with_suffix(".mp4")
+        full_name = Path(f"full_reset_{self.reset_count}_id{self.instance_id}").with_suffix(".mp4")
+        model_name = Path(f"model_reset_{self.reset_count}_id{self.instance_id}").with_suffix(
+            ".mp4"
+        )
         self.full_frame_writer = media.VideoWriter(
             base_dir / full_name, (144, 160), fps=60, input_format="gray"
         )
@@ -471,9 +436,7 @@ class RedGymEnv(Env):
             base_dir / model_name, self.output_shape[:2], fps=60, input_format="gray"
         )
         self.model_frame_writer.__enter__()
-        map_name = Path(
-            f"map_reset_{self.reset_count}_id{self.instance_id}"
-        ).with_suffix(".mp4")
+        map_name = Path(f"map_reset_{self.reset_count}_id{self.instance_id}").with_suffix(".mp4")
         self.map_frame_writer = media.VideoWriter(
             base_dir / map_name,
             (self.coords_pad * 4, self.coords_pad * 4),
@@ -574,9 +537,7 @@ class RedGymEnv(Env):
                 fs_path.mkdir(exist_ok=True)
                 plt.imsave(
                     fs_path
-                    / Path(
-                        f"frame_r{self.total_reward:.4f}_{self.reset_count}_explore_map.jpeg"
-                    ),
+                    / Path(f"frame_r{self.total_reward:.4f}_{self.reset_count}_explore_map.jpeg"),
                     obs["map"][:, :, 0],
                 )
                 plt.imsave(
@@ -587,10 +548,7 @@ class RedGymEnv(Env):
                     self.explore_map,
                 )
                 plt.imsave(
-                    fs_path
-                    / Path(
-                        f"frame_r{self.total_reward:.4f}_{self.reset_count}_full.jpeg"
-                    ),
+                    fs_path / Path(f"frame_r{self.total_reward:.4f}_{self.reset_count}_full.jpeg"),
                     self.render(reduce_res=False)[:, :, 0],
                 )
 
@@ -651,20 +609,12 @@ class RedGymEnv(Env):
         return self.bit_count(self.read_m(0xD356))
 
     def read_party(self):
-        return [
-            self.read_m(addr)
-            for addr in [0xD164, 0xD165, 0xD166, 0xD167, 0xD168, 0xD169]
-        ]
+        return [self.read_m(addr) for addr in [0xD164, 0xD165, 0xD166, 0xD167, 0xD168, 0xD169]]
 
     def get_all_events_reward(self):
         # adds up all event flags, exclude museum ticket
         return max(
-            sum(
-                [
-                    self.bit_count(self.read_m(i))
-                    for i in range(event_flags_start, event_flags_end)
-                ]
-            )
+            sum([self.bit_count(self.read_m(i)) for i in range(event_flags_start, event_flags_end)])
             - self.base_event_flags
             - int(self.read_bit(museum_ticket[0], museum_ticket[1])),
             0,
@@ -680,10 +630,7 @@ class RedGymEnv(Env):
             "op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
             "dead": self.reward_scale * self.died_count * -0.1,
             "badge": self.reward_scale * self.get_badges() * 5,
-            "explore": self.reward_scale
-            * self.explore_weight
-            * len(self.seen_coords)
-            * 0.01,
+            "explore": self.reward_scale * self.explore_weight * len(self.seen_coords) * 0.01,
             "explore_npcs": self.reward_scale
             * self.explore_npc_weight
             * len(self.seen_npcs)
@@ -702,12 +649,7 @@ class RedGymEnv(Env):
     def update_max_op_level(self):
         opp_base_level = 5
         opponent_level = (
-            max(
-                [
-                    self.read_m(a)
-                    for a in [0xD8C5, 0xD8F1, 0xD91D, 0xD949, 0xD975, 0xD9A1]
-                ]
-            )
+            max([self.read_m(a) for a in [0xD8C5, 0xD8F1, 0xD91D, 0xD949, 0xD975, 0xD9A1]])
             - opp_base_level
         )
         self.max_opponent_level = max(self.max_opponent_level, opponent_level)
@@ -758,16 +700,10 @@ class RedGymEnv(Env):
 
     def read_hp_fraction(self):
         hp_sum = sum(
-            [
-                self.read_hp(add)
-                for add in [0xD16C, 0xD198, 0xD1C4, 0xD1F0, 0xD21C, 0xD248]
-            ]
+            [self.read_hp(add) for add in [0xD16C, 0xD198, 0xD1C4, 0xD1F0, 0xD21C, 0xD248]]
         )
         max_hp_sum = sum(
-            [
-                self.read_hp(add)
-                for add in [0xD18D, 0xD1B9, 0xD1E5, 0xD211, 0xD23D, 0xD269]
-            ]
+            [self.read_hp(add) for add in [0xD18D, 0xD1B9, 0xD1E5, 0xD211, 0xD23D, 0xD269]]
         )
         max_hp_sum = max(max_hp_sum, 1)
         return hp_sum / max_hp_sum
@@ -784,9 +720,7 @@ class RedGymEnv(Env):
 
     def update_map_progress(self):
         map_idx = self.read_m(0xD35E)
-        self.max_map_progress = max(
-            self.max_map_progress, self.get_map_progress(map_idx)
-        )
+        self.max_map_progress = max(self.max_map_progress, self.get_map_progress(map_idx))
 
     def get_map_progress(self, map_idx):
         if map_idx in self.essential_map_locations.keys():
