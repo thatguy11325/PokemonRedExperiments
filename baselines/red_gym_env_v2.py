@@ -281,6 +281,21 @@ class RedGymEnv(Env):
 
         return obs, new_reward, False, step_limit_reached, {}
 
+    def find_neighboring_sign(self, sign_id, player_direction, player_x, player_y) -> bool:
+
+            sign_y = self.pyboy.get_memory_value(0xD4B0 + (2 * sign_id))
+            sign_x = self.pyboy.get_memory_value(0xD4B0 + (2 * sign_id + 1))
+
+            # Check if player is facing the sign (skip sign direction)
+            # 0 - down, 4 - up, 8 - left, 0xC - right
+            # We are making the assumption that a player will only ever be 1 space away
+            # from a sign
+            return (
+                (player_direction == 0 and sign_x == player_x and sign_y == player_y + 1) or
+                (player_direction == 4 and sign_x == player_x and sign_y == player_y - 1) or
+                (player_direction == 8 and sign_y == player_y and sign_x == player_x - 1) or
+                (player_direction == 0xC and sign_y == player_y and sign_x == player_x + 1)
+            )
     
     def find_neighboring_npc(self, npc_id, player_direction, player_x, player_y) -> int:
 
@@ -325,12 +340,16 @@ class RedGymEnv(Env):
         # check if the font is loaded
         if self.pyboy.get_memory_value(0xCFC4):
             # check if we are talking to a hidden object:
-            if self.pyboy.get_memory_value(0xCD3D) == 0x0 and self.pyboy.get_memory_value(0xCD3E) == 0x0:
+            player_direction = self.pyboy.get_memory_value(0xC109)
+            player_y_tiles = self.pyboy.get_memory_value(0xD361)
+            player_x_tiles = self.pyboy.get_memory_value(0xD362)
+            if self.pyboy.get_memory_value(0xCD3D) != 0x0 and self.pyboy.get_memory_value(0xCD3E) != 0x0:
                 # add hidden object to seen hidden objects
                 self.seen_hidden_objs.add((self.pyboy.get_memory_value(0xD35E), self.pyboy.get_memory_value(0xCD3F)))
+            elif any(self.find_neighboring_sign(sign_id, player_direction, player_x_tiles, player_y_tiles) for sign_id in range(self.pyboy.get_memory_value(0xD4B0))):
+                pass
             else:
                 # get information for player
-                player_direction = self.pyboy.get_memory_value(0xC109)
                 player_y = self.pyboy.get_memory_value(0xC104)
                 player_x = self.pyboy.get_memory_value(0xC106)
                 # get the npc who is closest to the player and facing them
@@ -343,8 +362,11 @@ class RedGymEnv(Env):
                     if npc_dist < minv:
                         mindex = npc_id
                         minv = npc_dist
-                if mindex != 0:
-                    self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex))
+                # A little counterintuitive. A mindex of 0 means the player isn't talking to an NPC
+                # However, given that we are also checking for hidden objects and signs,
+                # it could also mean a field move is being used which is worth the reward.
+                # if mindex != 0:
+                self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex))
 
         if self.save_video and self.fast_video:
             self.add_video_frame()
