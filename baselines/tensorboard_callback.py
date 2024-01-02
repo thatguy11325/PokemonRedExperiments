@@ -41,7 +41,7 @@ class TensorboardCallback(BaseCallback):
         
         if self.training_env.env_method("check_if_done", indices=[0])[0]:
             all_infos = self.training_env.get_attr("agent_stats")
-            all_final_infos = [stats[-1] for stats in all_infos]
+            all_final_infos = [stats for stats in all_infos[-1]] if all_infos else {}
             mean_infos, distributions = merge_dicts(all_final_infos)
             # TODO log distributions, and total return
             for key, val in mean_infos.items():
@@ -51,26 +51,26 @@ class TensorboardCallback(BaseCallback):
                 self.writer.add_histogram(f"env_stats_distribs/{key}", distrib, self.n_calls)
                 self.logger.record(f"env_stats_max/{key}", max(distrib))
                 
-            images = self.training_env.get_attr("recent_screens")
-            images_row = rearrange(np.array(images), "(r f) h w c -> (r c h) (f w)", r=2)
-            self.logger.record("trajectory/image", Image(images_row, "HW"), exclude=("stdout", "log", "json", "csv"))
+            # images = self.training_env.get_attr("recent_screens")
+            # images_row = rearrange(np.array(images), "(r f) h w c -> (r c h) (f w)", r=2)
+            # self.logger.record("trajectory/image", Image(images_row, "HW"), exclude=("stdout", "log", "json", "csv"))
 
             explore_map = np.array(self.training_env.get_attr("explore_map"))
             map_sum = reduce(explore_map, "f h w -> h w", "max")
             self.logger.record("trajectory/explore_sum", Image(map_sum, "HW"), exclude=("stdout", "log", "json", "csv"))
 
-            map_row = rearrange(explore_map, "(r f) h w -> (r h) (f w)", r=2)
-            self.logger.record("trajectory/explore_map", Image(map_row, "HW"), exclude=("stdout", "log", "json", "csv"))
+            # map_row = rearrange(explore_map, "(r f) h w -> (r h) (f w)", r=2)
+            # self.logger.record("trajectory/explore_map", Image(map_row, "HW"), exclude=("stdout", "log", "json", "csv"))
 
-            list_of_flag_dicts = self.training_env.get_attr("current_event_flags_set")
-            merged_flags = {k: v for d in list_of_flag_dicts for k, v in d.items()}
-            self.logger.record("trajectory/all_flags", json.dumps(merged_flags))
+            # list_of_flag_dicts = self.training_env.get_attr("current_event_flags_set")
+            # merged_flags = {k: v for d in list_of_flag_dicts for k, v in d.items()}
+            # self.logger.record("trajectory/all_flags", json.dumps(merged_flags))
 
-            self.writer.add_histogram(
-                "action_hist", 
-                np.array(self.training_env.get_attr("action_hist")), 
-                self.n_calls,
-            )
+            # self.writer.add_histogram(
+            #     "action_hist", 
+            #     np.array(self.training_env.get_attr("action_hist")), 
+            #     self.n_calls,
+            # )
             self.writer.flush()
 
         return True

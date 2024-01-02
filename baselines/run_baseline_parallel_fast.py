@@ -1,20 +1,22 @@
 import argparse
-import random
 import multiprocessing
 import os
+import random
 import uuid
 from os.path import exists
 from pathlib import Path
 
+from cut_env import CutEnv
 from red_gym_env_v2 import RedGymEnv
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from stable_baselines3.common.utils import set_random_seed
-from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from surf_env import SurfEnv
 from tensorboard_callback import TensorboardCallback
 
 
-def make_env(rank, env_conf, seed=0):
+def make_env(rank, env_type, env_conf, seed=0):
     """
     Utility function for multiprocessed env.
     :param env_id: (str) the environment ID
@@ -24,7 +26,13 @@ def make_env(rank, env_conf, seed=0):
     """
 
     def _init():
-        env = RedGymEnv(env_conf)
+        if env_type == "surf":
+            env_class = SurfEnv
+        elif env_type == "cut":
+            env_class = CutEnv
+        else:
+            env_class = RedGymEnv
+        env = env_class(env_conf)
         env.reset(seed=(seed + rank))
         return env
 
@@ -41,11 +49,20 @@ if __name__ == "__main__":
     parser.add_argument("--use-wandb-logging", action="store_true")
     parser.add_argument("--ep-length", type=int, default=2048 * 10)
     parser.add_argument("--sess-id", type=str, default=str(uuid.uuid4())[:8])
-    parser.add_argument("--save-video", action='store_true')
-    parser.add_argument("--fast-video", action='store_true')
+    parser.add_argument("--save-video", action="store_true")
+    parser.add_argument("--fast-video", action="store_true")
     parser.add_argument("--frame-stacks", type=int, default=4)
-    parser.add_argument("--policy", choices=["MultiInputPolicy", "CnnPolicy"], default="MultiInputPolicy2")
-    parser.add_argument("--vec-env-type", choices=["subproc", "dummy"], default="subproc")
+    parser.add_argument(
+        "--policy",
+        choices=["MultiInputPolicy", "CnnPolicy"],
+        default="MultiInputPolicy2",
+    )
+    parser.add_argument(
+        "--vec-env-type", choices=["subproc", "dummy"], default="subproc"
+    )
+    parser.add_argument(
+        "--poke-env-type", type=str, choices=["surf", "cut", "all"], default="all"
+    )
 
     args = parser.parse_args()
 
@@ -78,7 +95,12 @@ if __name__ == "__main__":
 
     roms_path = os.path.join(os.getcwd(), "roms")
     vecenv_type = SubprocVecEnv if args.vec_env_type == "subproc" else DummyVecEnv
-    env = vecenv_type([make_env(i, env_config, seed=random.randint(0, 4096)) for i in range(args.n_envs)])
+    env = vecenv_type(
+        [
+            make_env(i, args.poke_env_type, env_config, seed=random.randint(0, 4096))
+            for i in range(args.n_envs)
+        ]
+    )
 
     checkpoint_callback = CheckpointCallback(
         save_freq=args.ep_length, save_path=sess_path, name_prefix="poke"
@@ -127,7 +149,8 @@ if __name__ == "__main__":
 
     for i in range(learn_steps):
         model.learn(
-            total_timesteps=(args.ep_length) * args.n_envs * 1000, callback=CallbackList(callbacks)
+            total_timesteps=(args.ep_length) * args.n_envs * 1000,
+            callback=CallbackList(callbacks),
         )
 
     if args.use_wandb_logging:
