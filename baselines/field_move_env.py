@@ -11,7 +11,7 @@ from pyboy import PyBoy, WindowEvent
 from skimage.transform import downscale_local_mean
 
 
-class HmEnv(Env):
+class FieldMoveEnv(Env):
     def __init__(self, config: dict[str, int | float] | None = None):
         self.s_path: Path = config["session_path"]
         self.save_final_state = config["save_final_state"]

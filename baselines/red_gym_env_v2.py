@@ -131,7 +131,7 @@ class RedGymEnv(Env):
         if not config["headless"]:
             self.pyboy.set_emulation_speed(6)
 
-    def reset(self, seed=None):
+    def reset(self, seed: int | None =None):
         self.seed = seed
         # restart game, skipping credits
         with open(self.init_state, "rb") as f:

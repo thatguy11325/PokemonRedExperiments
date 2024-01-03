@@ -14,6 +14,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from surf_env import SurfEnv
 from tensorboard_callback import TensorboardCallback
+from warp_env import WarpEnv
 
 
 def make_env(rank, env_type, env_conf, seed=0):
@@ -30,6 +31,8 @@ def make_env(rank, env_type, env_conf, seed=0):
             env_class = SurfEnv
         elif env_type == "cut":
             env_class = CutEnv
+        elif env_type == "warp":
+            env_class = WarpEnv
         else:
             env_class = RedGymEnv
         env = env_class(env_conf)
@@ -61,7 +64,10 @@ if __name__ == "__main__":
         "--vec-env-type", choices=["subproc", "dummy"], default="subproc"
     )
     parser.add_argument(
-        "--poke-env-type", type=str, choices=["surf", "cut", "all"], default="all"
+        "--poke-env-type",
+        type=str,
+        choices=["surf", "cut", "warp", "all"],
+        default="all",
     )
 
     args = parser.parse_args()
