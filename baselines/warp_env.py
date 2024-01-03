@@ -291,10 +291,6 @@ class WarpEnv(FieldMoveEnv):
     def update_obs(self):
         super().update_obs()
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, dict[Any, Any]]:
-        self.step_count += 1
-        return super().step(action)
-
     def get_game_state_reward(self, print_stats: bool = False) -> dict[str, float]:
         return {"steps": (self.max_steps - self.step_count) / self.max_steps}
 
