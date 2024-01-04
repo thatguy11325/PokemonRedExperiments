@@ -333,7 +333,7 @@ class RedGymEnv(Env):
                 # rendering must be enabled on the tick before frame is needed
                 self.pyboy._rendering(True)
             self.pyboy.tick()
-
+        
         # check if the font is loaded
         if self.pyboy.get_memory_value(0xCFC4):
             # check if we are talking to a hidden object:
