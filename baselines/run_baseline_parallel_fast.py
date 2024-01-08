@@ -6,6 +6,8 @@ import uuid
 from os.path import exists
 from pathlib import Path
 
+import torch
+import torchvision
 from cut_env import CutEnv
 from red_gym_env_v2 import RedGymEnv
 from stable_baselines3 import PPO
@@ -43,13 +45,22 @@ def make_env(rank, env_type, env_conf, seed=0):
     return _init
 
 
+def detect_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    elif torch.backends.mps.is_available():
+        return "mps"
+    else:
+        return "cpu"
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--rom-path", default="../PokemonRed.gb")
     parser.add_argument("--state-path", default="../home.state")
     parser.add_argument("--n-envs", type=int, default=multiprocessing.cpu_count())
-    parser.add_argument("--use-wandb-logging", action="store_true")
+    parser.add_argument("--wandb-api-key", type=str, default=None)
     parser.add_argument("--ep-length", type=int, default=2048 * 10)
     parser.add_argument("--sess-id", type=str, default=str(uuid.uuid4())[:8])
     parser.add_argument("--save-video", action="store_true")
@@ -68,6 +79,15 @@ if __name__ == "__main__":
         type=str,
         choices=["surf", "cut", "warp", "all"],
         default="all",
+    )
+    parser.add_argument("--device", type=str, default=detect_device())
+    parser.add_argument(
+        "--seed-style",
+        type=str,
+        choices=["random", "buckets"],
+        default="random",
+        help="Random seed is every env starts with a random delay. "
+        "Bucketed is every 4 envs start 4096 steps delayed from the previous 4 envs.",
     )
 
     args = parser.parse_args()
@@ -103,7 +123,14 @@ if __name__ == "__main__":
     vecenv_type = SubprocVecEnv if args.vec_env_type == "subproc" else DummyVecEnv
     env = vecenv_type(
         [
-            make_env(i, args.poke_env_type, env_config, seed=random.randint(0, 4096))
+            make_env(
+                i,
+                args.poke_env_type,
+                env_config,
+                seed=random.randint(0, 4096)
+                if args.seed_style == "random"
+                else 4096 * i // 4,
+            )
             for i in range(args.n_envs)
         ]
     )
@@ -114,7 +141,7 @@ if __name__ == "__main__":
 
     callbacks = [checkpoint_callback, TensorboardCallback(log_dir="./logs")]
 
-    if args.use_wandb_logging:
+    if args.wandb_api_key:
         import wandb
         from wandb.integration.sb3 import WandbCallback
 
@@ -133,6 +160,12 @@ if __name__ == "__main__":
     # put a checkpoint here you want to start from
     file_name = "session_e41c9eff/poke_38207488_steps"
 
+    policy_kwargs = None
+    if args.policy == "CnnPolicy":
+        policy_kwargs = dict(
+            features_extractor_class=torchvision.models.resnet152,
+            features_extractor_kwargs=dict(pretrained=True),
+        )
     if exists(file_name + ".zip"):
         print("\nloading checkpoint")
         model = PPO.load(file_name, env=env)
@@ -151,8 +184,11 @@ if __name__ == "__main__":
             n_epochs=3,
             gamma=0.998,
             tensorboard_log=sess_path,
+            device=args.device,
         )
 
+    if args.device == "cuda":
+        model.policy = torch.compile(model.policy, mode="max-autotune")
     for i in range(learn_steps):
         model.learn(
             total_timesteps=(args.ep_length) * args.n_envs * 1000,

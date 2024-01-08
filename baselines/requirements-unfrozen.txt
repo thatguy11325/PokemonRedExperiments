@@ -1,16 +1,17 @@
-stable_baselines3
-sb3-contrib
-gymnasium
-scikit-image
-scikit-learn
-pandas
-tqdm
-torch
 einops
+git+https://github.com/PWhiddy/mediapy.git # for rbga (alpha channel) support
+gymnasium
 numpy
 opencv-python
-seaborn
+pandas
 pyboy
+sb3-contrib
+scikit-image
+scikit-learn
+seaborn
+stable_baselines3
 tensorboard
+torch
+torchvision
+tqdm
 wandb
-git+https://github.com/PWhiddy/mediapy.git # for rbga (alpha channel) support
