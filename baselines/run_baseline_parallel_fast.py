@@ -145,6 +145,8 @@ if __name__ == "__main__":
         import wandb
         from wandb.integration.sb3 import WandbCallback
 
+        wandb.login(key=args.wandb_api_key)
+
         run = wandb.init(
             project="pokemon-train",
             id=args.sess_id,
