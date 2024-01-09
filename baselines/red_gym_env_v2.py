@@ -1,3 +1,4 @@
+from typing import Optional
 import uuid
 import json
 from pathlib import Path
@@ -82,7 +83,8 @@ class RedGymEnv(Env):
             event_names = json.load(f)
         self.event_names = event_names
 
-        self.output_shape = (72, 80, self.frame_stacks)
+        # self.output_shape = (72, 80, self.frame_stacks)
+        self.output_shape = (144, 160, self.frame_stacks)
         self.coords_pad = 12
 
         # Set these in ALL subclasses
@@ -112,7 +114,7 @@ class RedGymEnv(Env):
                     "moves_obtained": spaces.MultiBinary(0xA5),
                 }
             )
-        elif self.policy == "CnnPolicy":
+        elif self.policy in ["CnnPolicy", "MlpLstmPolicy", "CnnLstmPolicy"]:
             self.observation_space = spaces.Box(
                 low=0, high=255, shape=self.output_shape, dtype=np.uint8
             )
@@ -131,7 +133,7 @@ class RedGymEnv(Env):
         if not config["headless"]:
             self.pyboy.set_emulation_speed(6)
 
-    def reset(self, seed: int | None =None):
+    def reset(self, seed: Optional[int] =None):
         self.seed = seed
         # restart game, skipping credits
         with open(self.init_state, "rb") as f:
@@ -195,7 +197,7 @@ class RedGymEnv(Env):
     def init_hidden_obj_mem(self):
         self.seen_hidden_objs = set()
 
-    def render(self, reduce_res=True):
+    def render(self, reduce_res=False):
         game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]  # (144, 160, 3)
         if reduce_res:
             game_pixels_render = (downscale_local_mean(game_pixels_render, (2, 2, 1))).astype(
@@ -527,7 +529,7 @@ class RedGymEnv(Env):
         if self.step_count % 50 == 0:
             plt.imsave(
                 self.s_path / Path(f"curframe_{self.instance_id}.jpeg"),
-                self.render(reduce_res=False)[:, :, 0],
+                self.render(reduce_res=False)[:, :, 0:1],
             )
 
         if self.print_rewards and done:

@@ -1,4 +1,5 @@
 from collections import deque
+from typing import Optional
 
 from field_move_env import FieldMoveEnv
 
@@ -7,7 +8,7 @@ class CutEnv(FieldMoveEnv):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def reset(self, seed: int | None = None):
+    def reset(self, seed: Optional[int] = None):
         self.done = False
         self.map_idxs = set()
         self.current_map_idx = 0

@@ -1,7 +1,7 @@
 import json
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Union
 
 import mediapy as media
 import numpy as np
@@ -12,7 +12,7 @@ from skimage.transform import downscale_local_mean
 
 
 class FieldMoveEnv(Env):
-    def __init__(self, config: dict[str, int | float] | None = None):
+    def __init__(self, config: dict[str, Optional[Union[int, float]]] = None):
         self.s_path: Path = config["session_path"]
         self.save_final_state = config["save_final_state"]
         self.print_rewards = config["print_rewards"]
@@ -95,7 +95,7 @@ class FieldMoveEnv(Env):
         if not config["headless"]:
             self.pyboy.set_emulation_speed(6)
 
-    def reset(self, seed: int | None = None) -> tuple[np.ndarray, dict[Any, Any]]:
+    def reset(self, seed: Optional[int] = None) -> tuple[np.ndarray, dict[Any, Any]]:
         self.seed = seed
 
         # restart game, skipping creditsw]

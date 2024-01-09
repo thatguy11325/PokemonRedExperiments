@@ -10,6 +10,7 @@ import torch
 import torchvision
 from cut_env import CutEnv
 from red_gym_env_v2 import RedGymEnv
+from sb3_contrib import RecurrentPPO
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from stable_baselines3.common.utils import set_random_seed
@@ -68,8 +69,8 @@ if __name__ == "__main__":
     parser.add_argument("--frame-stacks", type=int, default=4)
     parser.add_argument(
         "--policy",
-        choices=["MultiInputPolicy", "CnnPolicy"],
-        default="MultiInputPolicy2",
+        choices=["MultiInputPolicy", "CnnPolicy", "CnnLstmPolicy", "MlpLstmPolicy"],
+        default="MultiInputPolicy",
     )
     parser.add_argument(
         "--vec-env-type", choices=["subproc", "dummy"], default="subproc"
@@ -163,21 +164,22 @@ if __name__ == "__main__":
     file_name = "session_e41c9eff/poke_38207488_steps"
 
     policy_kwargs = None
-    if args.policy == "CnnPolicy":
+    if args.policy in ["CnnPolicy", "CnnLstmPolicy"]:
         policy_kwargs = dict(
             features_extractor_class=torchvision.models.resnet152,
-            features_extractor_kwargs=dict(pretrained=True),
+            features_extractor_kwargs=dict(pretrained=False),
         )
+    PPO_class = PPO if args.policy in ["CnnPolicy", "MultiInputPolicy"] else RecurrentPPO
     if exists(file_name + ".zip"):
         print("\nloading checkpoint")
-        model = PPO.load(file_name, env=env)
+        model = PPO_class.load(file_name, env=env)
         model.n_steps = args.ep_length
         model.n_envs = env.num_envs
         model.rollout_buffer.buffer_size = args.ep_length
         model.rollout_buffer.n_envs = args.n_envs
         model.rollout_buffer.reset()
     else:
-        model = PPO(
+        model = PPO_class(
             args.policy,
             env,
             verbose=1,
@@ -189,8 +191,8 @@ if __name__ == "__main__":
             device=args.device,
         )
 
-    if args.device == "cuda":
-        model.policy = torch.compile(model.policy, mode="max-autotune")
+    # if args.device == "cuda":
+    #     model.policy = torch.compile(model.policy, mode="max-autotune")
     for i in range(learn_steps):
         model.learn(
             total_timesteps=(args.ep_length) * args.n_envs * 1000,

@@ -1,5 +1,5 @@
 import random
-from typing import Any
+from typing import Any, Dict, Union, Optional
 
 import numpy as np
 from field_move_env import FieldMoveEnv
@@ -278,11 +278,11 @@ class WarpEnv(FieldMoveEnv):
     This Env is a "game" to see how fast you can reach a pokemon center from one of the
     """
 
-    def __init__(self, config: dict[str, int | float] | None = None):
+    def __init__(self, config: Optional[Dict[str, Union[int, float]]] = None):
         super().__init__(config=config)
         self.max_steps = config.get("max_steps", 1000)
 
-    def reset(self, seed: int | None =None):
+    def reset(self, seed: Optional[int] = None):
         self.step_count = 0
         # choose a random target pokemon center
         self.target_pokecenter = random.choice(POKECENTERS_IDXS)
