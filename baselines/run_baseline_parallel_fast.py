@@ -62,6 +62,7 @@ if __name__ == "__main__":
     parser.add_argument("--state-path", default="../home.state")
     parser.add_argument("--n-envs", type=int, default=multiprocessing.cpu_count())
     parser.add_argument("--wandb-api-key", type=str, default=None)
+    parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--ep-length", type=int, default=2048 * 10)
     parser.add_argument("--sess-id", type=str, default=str(uuid.uuid4())[:8])
     parser.add_argument("--save-video", action="store_true")
@@ -148,6 +149,10 @@ if __name__ == "__main__":
 
         wandb.login(key=args.wandb_api_key)
 
+    if args.wandb:
+        import wandb
+        from wandb.integration.sb3 import WandbCallback
+
         run = wandb.init(
             project="pokemon-train",
             id=args.sess_id,
@@ -166,10 +171,12 @@ if __name__ == "__main__":
     policy_kwargs = None
     if args.policy in ["CnnPolicy", "CnnLstmPolicy"]:
         policy_kwargs = dict(
-            features_extractor_class=torchvision.models.resnet152,
+            features_extractor_class=torchvision.models.resnet50,
             features_extractor_kwargs=dict(pretrained=False),
         )
-    PPO_class = PPO if args.policy in ["CnnPolicy", "MultiInputPolicy"] else RecurrentPPO
+    PPO_class = (
+        PPO if args.policy in ["CnnPolicy", "MultiInputPolicy"] else RecurrentPPO
+    )
     if exists(file_name + ".zip"):
         print("\nloading checkpoint")
         model = PPO_class.load(file_name, env=env)
@@ -191,13 +198,21 @@ if __name__ == "__main__":
             device=args.device,
         )
 
-    # if args.device == "cuda":
-    #     model.policy = torch.compile(model.policy, mode="max-autotune")
-    for i in range(learn_steps):
-        model.learn(
-            total_timesteps=(args.ep_length) * args.n_envs * 1000,
-            callback=CallbackList(callbacks),
-        )
+    if args.device == "cuda":
+        model.policy = torch.compile(model.policy, mode="reduce-overhead")
+
+    with torch.profiler.profile(
+        schedule=torch.profiler.schedule(wait=1, warmup=1, active=2, repeat=0),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler("./logs"),
+        with_modules=True,
+        with_stack=True,
+    ) as prof:
+        for i in range(learn_steps):
+            model.learn(
+                total_timesteps=args.ep_length * args.n_envs * 1000,
+                callback=CallbackList(callbacks),
+            )
+        prof.step()
 
     if args.use_wandb_logging:
         run.finish()
