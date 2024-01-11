@@ -39,7 +39,7 @@ def make_env(rank, env_type, env_conf, seed=0):
         else:
             env_class = RedGymEnv
         env = env_class(env_conf)
-        env.reset(seed=(seed + rank))
+        env.reset(seed=(seed + rank), first=True)
         return env
 
     set_random_seed(seed)
@@ -128,7 +128,11 @@ if __name__ == "__main__":
             make_env(
                 i,
                 args.poke_env_type,
-                env_config,
+                {
+                    **env_config,
+                    "reset_state": i % 4 == 0 or i % 4 == 1,
+                    "reset_rewards": i % 4 == 1 or i % 4 == 2,
+                },
                 seed=random.randint(0, 4096)
                 if args.seed_style == "random"
                 else 4096 * i // 4,
