@@ -47,9 +47,9 @@ def make_env(rank, env_type, env_conf, seed=0):
 
 
 def detect_device() -> str:
-    if torch.cuda.is_available():
+    if torch.backends.cuda.is_built():
         return "cuda"
-    elif torch.backends.mps.is_available():
+    elif torch.backends.mps.is_built():
         return "mps"
     else:
         return "cpu"
@@ -91,6 +91,7 @@ if __name__ == "__main__":
         help="Random seed is every env starts with a random delay. "
         "Bucketed is every 4 envs start 4096 steps delayed from the previous 4 envs.",
     )
+    # parser.add_argument("--process-batch-size", type=int, default=None)
 
     args = parser.parse_args()
 
@@ -122,24 +123,56 @@ if __name__ == "__main__":
     print(env_config)
 
     roms_path = os.path.join(os.getcwd(), "roms")
-    vecenv_type = SubprocVecEnv if args.vec_env_type == "subproc" else DummyVecEnv
+    vecenv_type = (
+        SubprocVecEnv
+        if args.vec_env_type == "subproc"
+        else DummyVecEnv
+    )
+    from_scratch_config = {**env_config, "reset_state": True, "reset_rewards": True}
+    reset_exploration_rewards_config = {
+        **env_config,
+        "reset_state": False,
+        "reset_rewards": True,
+    }
+    reset_none_config = {**env_config, "reset_state": False, "reset_rewards": False}
+
     env = vecenv_type(
         [
             make_env(
                 i,
                 args.poke_env_type,
-                {
-                    **env_config,
-                    "reset_state": i % 4 == 0 or i % 4 == 1,
-                    "reset_rewards": i % 4 == 1 or i % 4 == 2,
-                },
+                from_scratch_config,
                 seed=random.randint(0, 4096)
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs)
+            for i in range(args.n_envs // 4)
+        ]
+        + [
+            make_env(
+                i,
+                args.poke_env_type,
+                reset_exploration_rewards_config,
+                seed=random.randint(0, 4096)
+                if args.seed_style == "random"
+                else 4096 * i // 4,
+            )
+            for i in range(args.n_envs // 2)
+        ]
+        + [
+            make_env(
+                i,
+                args.poke_env_type,
+                reset_none_config,
+                seed=random.randint(0, 4096)
+                if args.seed_style == "random"
+                else 4096 * i // 4,
+            )
+            for i in range(args.n_envs // 4)
         ]
     )
+
+    print(f"Running with {env.num_envs} envs")
 
     checkpoint_callback = CheckpointCallback(
         save_freq=args.ep_length, save_path=sess_path, name_prefix="poke"
@@ -178,6 +211,7 @@ if __name__ == "__main__":
             features_extractor_class=torchvision.models.resnet50,
             features_extractor_kwargs=dict(pretrained=False),
         )
+        policy_kwargs = {}
     PPO_class = (
         PPO if args.policy in ["CnnPolicy", "MultiInputPolicy"] else RecurrentPPO
     )
@@ -203,20 +237,15 @@ if __name__ == "__main__":
         )
 
     if args.device == "cuda":
+        print("torch compiling")
         model.policy = torch.compile(model.policy, mode="reduce-overhead")
+        print("torch compiled")
 
-    with torch.profiler.profile(
-        schedule=torch.profiler.schedule(wait=1, warmup=1, active=2, repeat=0),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler("./logs"),
-        with_modules=True,
-        with_stack=True,
-    ) as prof:
-        for i in range(learn_steps):
-            model.learn(
-                total_timesteps=args.ep_length * args.n_envs * 1000,
-                callback=CallbackList(callbacks),
-            )
-        prof.step()
+    for i in range(learn_steps):
+        model.learn(
+            total_timesteps=args.ep_length * args.n_envs * 1000,
+            callback=CallbackList(callbacks),
+        )
 
     if args.use_wandb_logging:
         run.finish()
