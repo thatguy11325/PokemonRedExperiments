@@ -206,12 +206,11 @@ if __name__ == "__main__":
     file_name = "session_e41c9eff/poke_38207488_steps"
 
     policy_kwargs = None
-    if args.policy in ["CnnPolicy", "CnnLstmPolicy"]:
-        policy_kwargs = dict(
-            features_extractor_class=torchvision.models.resnet50,
-            features_extractor_kwargs=dict(pretrained=False),
-        )
-        policy_kwargs = {}
+    # if args.policy in ["CnnPolicy", "CnnLstmPolicy"]:
+    #     policy_kwargs = dict(
+    #         features_extractor_class=torchvision.models.resnet34,
+    #         features_extractor_kwargs=dict(pretrained=False),
+    #     )
     PPO_class = (
         PPO if args.policy in ["CnnPolicy", "MultiInputPolicy"] else RecurrentPPO
     )
@@ -238,7 +237,7 @@ if __name__ == "__main__":
 
     if args.device == "cuda":
         print("torch compiling")
-        model.policy = torch.compile(model.policy, mode="reduce-overhead")
+        model.policy = torch.compile(model.policy)
         print("torch compiled")
 
     for i in range(learn_steps):

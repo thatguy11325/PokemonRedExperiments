@@ -411,8 +411,8 @@ class RedGymEnv(Env):
                 # A little counterintuitive. A mindex of 0 means the player isn't talking to an NPC
                 # However, given that we are also checking for hidden objects and signs,
                 # it could also mean a field move is being used which is worth the reward.
-                # if mindex != 0:
-                self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex))
+                if mindex != 0:
+                    self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex))
 
         if self.save_video and self.fast_video:
             self.add_video_frame()
