@@ -345,7 +345,7 @@ class RedGymEnv(Env):
             # Manhattan distance
             return abs(npc_y - player_y) + abs(npc_x - player_x)
 
-        return 1000
+        return False
 
     def run_action_on_emulator(self, action):
         self.action_hist[action] += 1
@@ -399,20 +399,21 @@ class RedGymEnv(Env):
                 # get the npc who is closest to the player and facing them
                 # we go through all npcs because there are npcs like
                 # nurse joy who can be across a desk and still talk to you
-                mindex = 0
-                minv = 1000
-                for npc_id in range(1, self.pyboy.get_memory_value(0xD4E1)):
-                    npc_dist = self.find_neighboring_npc(
-                        npc_id, player_direction, player_x, player_y
+
+                # npc_id 0 is the player
+                npc_distances = (
+                    (
+                        self.find_neighboring_npc(
+                            npc_id, player_direction, player_x, player_y
+                        ),
+                        npc_id,
                     )
-                    if npc_dist < minv:
-                        mindex = npc_id
-                        minv = npc_dist
-                # A little counterintuitive. A mindex of 0 means the player isn't talking to an NPC
-                # However, given that we are also checking for hidden objects and signs,
-                # it could also mean a field move is being used which is worth the reward.
-                if mindex != 0:
-                    self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), mindex))
+                    for npc_id in range(1, self.pyboy.get_memory_value(0xD4E1))
+                )
+                npc_candidates = (x for x in npc_distances if x[0])
+                if npc_candidates:
+                    _, npc_id = min(npc_candidates, key=lambda x: x[0])
+                    self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), npc_id))
 
         if self.save_video and self.fast_video:
             self.add_video_frame()
