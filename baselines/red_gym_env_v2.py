@@ -198,7 +198,7 @@ class RedGymEnv(Env):
 
             self.max_map_progress = 0
             self.progress_reward = self.get_game_state_reward()
-            self.total_reward = sum([val for _, val in self.progress_reward.items()])
+            self.total_reward = self.reward_scale * sum([val for _, val in self.progress_reward.items()])
 
         # lazy random seed setting
         if self.seed:
@@ -410,7 +410,7 @@ class RedGymEnv(Env):
                     )
                     for npc_id in range(1, self.pyboy.get_memory_value(0xD4E1))
                 )
-                npc_candidates = (x for x in npc_distances if x[0])
+                npc_candidates = [x for x in npc_distances if x[0]]
                 if npc_candidates:
                     _, npc_id = min(npc_candidates, key=lambda x: x[0])
                     self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), npc_id))
@@ -679,31 +679,15 @@ class RedGymEnv(Env):
         # addresses from https://datacrystal.romhacking.net/wiki/Pok%C3%A9mon_Red/Blue:RAM_map
         # https://github.com/pret/pokered/blob/91dc3c9f9c8fd529bb6e8307b58b96efa0bec67e/constants/event_constants.asm
         state_scores = {
-            "event": self.reward_scale * self.update_max_event_rew() * 3,
-            # "level": self.reward_scale * self.get_levels_reward(),
-            # "heal": self.reward_scale * self.total_healing_rew * 4,
-            # "op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
-            # "dead": self.reward_scale * self.died_count * -0.1,
-            "badge": self.reward_scale * self.get_badges() * 5,
-            "explore": self.reward_scale
-            * self.explore_weight
-            * len(self.seen_coords)
-            * 0.01,
-            "explore_maps": self.reward_scale
-            * self.explore_weight
-            * len(self.seen_map_ids)
-            * 0.015,
-            "explore_npcs": self.reward_scale
-            * self.explore_npc_weight
-            * len(self.seen_npcs)
-            * 0.00015,
-            "explore_hidden_objs": self.reward_scale
-            * self.explore_hidden_obj_weight
-            * len(self.seen_hidden_objs)
-            * 0.00015,
+            "event": self.update_max_event_rew(),
+            "explore_npcs": self.reward_scale * self.explore_npc_weight * len(self.seen_npcs) * 0.00015,
             "seen_pokemon": self.reward_scale * sum(self.seen_pokemon) * 0.000010,
-            "caught_pokemon": self.reward_scale * sum(self.caught_pokemon) * 0.000020,
-            "moves_obtained": self.reward_scale * sum(self.moves_obtained) * 0.000020,
+            "caught_pokemon": self.reward_scale * sum(self.caught_pokemon) * 0.000010,
+            "moves_obtained": self.reward_scale * sum(self.moves_obtained) * 0.000010,
+            "explore_hidden_objs": self.reward_scale * self.explore_hidden_obj_weight * len(self.seen_hidden_objs) * 0.00015,
+            "badge": self.get_badges() * 5,
+            "explore": len(self.seen_coords) * 0.01,
+            "explore_maps": len(self.seen_map_ids) * 0.015,
         }
 
         return state_scores

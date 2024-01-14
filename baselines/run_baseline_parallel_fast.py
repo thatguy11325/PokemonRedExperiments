@@ -115,7 +115,7 @@ if __name__ == "__main__":
         "reward_scale": 4,
         "extra_buttons": False,
         "explore_weight": 3,  # 2.5
-        "explore_npc_weight": 5,  # 2.5
+        "explore_npc_weight": 1,  # 2.5
         "frame_stacks": args.frame_stacks,
         "policy": args.policy,
     }
@@ -146,7 +146,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs // 4)
+            for i in range(args.n_envs // 8)
         ]
         + [
             make_env(
@@ -157,7 +157,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs // 2)
+            for i in range(args.n_envs // 4 * 3)
         ]
         + [
             make_env(
@@ -168,7 +168,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs // 4)
+            for i in range(args.n_envs // 8)
         ]
     )
 
@@ -206,11 +206,11 @@ if __name__ == "__main__":
     file_name = "session_e41c9eff/poke_38207488_steps"
 
     policy_kwargs = None
-    # if args.policy in ["CnnPolicy", "CnnLstmPolicy"]:
-    #     policy_kwargs = dict(
-    #         features_extractor_class=torchvision.models.resnet34,
-    #         features_extractor_kwargs=dict(pretrained=False),
-    #     )
+    if args.policy in ["CnnPolicy", "CnnLstmPolicy"]:
+        policy_kwargs = dict(
+            features_extractor_class=torchvision.models.resnet50,
+            features_extractor_kwargs=dict(pretrained=False),
+        )
     PPO_class = (
         PPO if args.policy in ["CnnPolicy", "MultiInputPolicy"] else RecurrentPPO
     )
@@ -237,7 +237,7 @@ if __name__ == "__main__":
 
     if args.device == "cuda":
         print("torch compiling")
-        model.policy = torch.compile(model.policy)
+        model.policy = torch.compile(model.policy, mode="max-autotune")
         print("torch compiled")
 
     for i in range(learn_steps):

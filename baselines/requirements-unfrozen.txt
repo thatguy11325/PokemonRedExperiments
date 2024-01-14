@@ -1,6 +1,7 @@
 einops
 git+https://github.com/PWhiddy/mediapy.git # for rbga (alpha channel) support
 gymnasium
+nvitop
 numpy
 opencv-python
 pandas
