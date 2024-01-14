@@ -97,8 +97,8 @@ class RedGymEnv(Env):
             event_names = json.load(f)
         self.event_names = event_names
 
-        # self.output_shape = (72, 80, self.frame_stacks)
-        self.output_shape = (144, 160, self.frame_stacks)
+        self.output_shape = (72, 80, self.frame_stacks)
+        # self.output_shape = (144, 160, self.frame_stacks)
         self.coords_pad = 12
 
         # Set these in ALL subclasses
@@ -152,8 +152,18 @@ class RedGymEnv(Env):
             self.pyboy.set_emulation_speed(6)
 
     def reset(self, seed: Optional[int] = None, first: bool = False):
-        self.seed = seed
         # restart game, skipping credits
+        self.explore_map_dim = 384
+        if first:
+            self.explore_map = np.zeros(
+                (self.explore_map_dim, self.explore_map_dim), dtype=np.uint8
+            )
+            self.recent_screens = np.zeros(self.output_shape, dtype=np.uint8)
+            self.recent_actions = np.zeros((self.frame_stacks,), dtype=np.uint8)
+            self.seen_pokemon = np.zeros(152, dtype=np.uint8)
+            self.caught_pokemon = np.zeros(152, dtype=np.uint8)
+            self.moves_obtained = np.zeros(0xA5, dtype=np.uint8)
+
         if first or self.reset_state or self.reset_rewards:
             self.init_npc_mem()
             self.init_hidden_obj_mem()
@@ -162,47 +172,46 @@ class RedGymEnv(Env):
             with open(self.init_state, "rb") as f:
                 self.pyboy.load_state(f)
             self.init_map_mem()
-            self.explore_map_dim = 384
-            self.explore_map = np.zeros(
-                (self.explore_map_dim, self.explore_map_dim), dtype=np.uint8
-            )
-            self.recent_screens = np.zeros(self.output_shape, dtype=np.uint8)
-            self.recent_actions = np.zeros((self.frame_stacks,), dtype=np.uint8)
-            self.levels_satisfied = False
-            self.base_explore = 0
-            self.max_opponent_level = 0
-            self.max_event_rew = 0
-            self.max_level_rew = 0
-            self.last_health = 1
-            self.total_healing_rew = 0
-            self.died_count = 0
-            self.party_size = 0
-            self.step_count = 0
-            self.seen_pokemon = np.zeros(152, dtype=np.uint8)
-            self.caught_pokemon = np.zeros(152, dtype=np.uint8)
-            self.moves_obtained = np.zeros(0xA5, dtype=np.uint8)
 
-            self.base_event_flags = sum(
-                [
-                    self.bit_count(self.read_m(i))
-                    for i in range(event_flags_start, event_flags_end)
-                ]
-            )
+            self.explore_map.fill(0)
+            self.recent_screens.fill(0)
+            self.recent_actions.fill(0)
+            self.seen_pokemon.fill(0)
+            self.caught_pokemon.fill(0)
+            self.moves_obtained.fill(0)
 
-            self.current_event_flags_set = {}
+        self.levels_satisfied = False
+        self.base_explore = 0
+        self.max_opponent_level = 0
+        self.max_event_rew = 0
+        self.max_level_rew = 0
+        self.last_health = 1
+        self.total_healing_rew = 0
+        self.died_count = 0
+        self.party_size = 0
+        self.step_count = 0
 
-            self.action_hist = np.zeros(len(self.valid_actions))
+        self.base_event_flags = sum(
+            [
+                self.bit_count(self.read_m(i))
+                for i in range(event_flags_start, event_flags_end)
+            ]
+        )
 
-            # experiment!
-            # self.max_steps += 128
+        self.current_event_flags_set = {}
 
-            self.max_map_progress = 0
-            self.progress_reward = self.get_game_state_reward()
-            self.total_reward = self.reward_scale * sum([val for _, val in self.progress_reward.items()])
+        self.action_hist = np.zeros(len(self.valid_actions))
+
+        # experiment!
+        # self.max_steps += 128
+
+        self.max_map_progress = 0
+        self.progress_reward = self.get_game_state_reward()
+        self.total_reward = self.reward_scale * sum([val for _, val in self.progress_reward.items()])
 
         # lazy random seed setting
-        if self.seed:
-            for _ in range(self.seed):
+        if seed:
+            for _ in range(seed):
                 self.pyboy.tick()
 
         self.agent_stats = []
@@ -220,12 +229,13 @@ class RedGymEnv(Env):
     def init_hidden_obj_mem(self):
         self.seen_hidden_objs = set()
 
-    def render(self, reduce_res=False):
+    def render(self, reduce_res=True):
         game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]  # (144, 160, 3)
         if reduce_res:
-            game_pixels_render = (
-                downscale_local_mean(game_pixels_render, (2, 2, 1))
-            ).astype(np.uint8)
+            # game_pixels_render = (
+            #     downscale_local_mean(game_pixels_render, (2, 2, 1))
+            # ).astype(np.uint8)
+            game_pixels_render = game_pixels_render[::2, ::2, :]
         return game_pixels_render
 
     def _get_obs(self):

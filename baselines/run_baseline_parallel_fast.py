@@ -17,7 +17,24 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from surf_env import SurfEnv
 from tensorboard_callback import TensorboardCallback
+from torch.profiler import ProfilerActivity, profile
 from warp_env import WarpEnv
+
+torch.set_float32_matmul_precision("high")
+
+
+class FeatureExtractor(torch.nn.Module):
+    def __init__(self, output_dim: int = 512):
+        self.model = torch.nn.Sequential(
+            [
+                torchvision.models.resnet34(pretrained=True),
+                torch.nn.ReLU(),
+                torch.nn.LazyLinear(output_dim),  # Output of NatureCNN
+            ]
+        )
+
+    def forward(self, x):
+        return self.model(x)
 
 
 def make_env(rank, env_type, env_conf, seed=0):
@@ -123,11 +140,7 @@ if __name__ == "__main__":
     print(env_config)
 
     roms_path = os.path.join(os.getcwd(), "roms")
-    vecenv_type = (
-        SubprocVecEnv
-        if args.vec_env_type == "subproc"
-        else DummyVecEnv
-    )
+    vecenv_type = SubprocVecEnv if args.vec_env_type == "subproc" else DummyVecEnv
     from_scratch_config = {**env_config, "reset_state": True, "reset_rewards": True}
     reset_exploration_rewards_config = {
         **env_config,
@@ -208,8 +221,8 @@ if __name__ == "__main__":
     policy_kwargs = None
     if args.policy in ["CnnPolicy", "CnnLstmPolicy"]:
         policy_kwargs = dict(
-            features_extractor_class=torchvision.models.resnet50,
-            features_extractor_kwargs=dict(pretrained=False),
+            features_extractor_class=FeatureExtractor,
+            features_extractor_kwargs={},
         )
     PPO_class = (
         PPO if args.policy in ["CnnPolicy", "MultiInputPolicy"] else RecurrentPPO
@@ -227,24 +240,37 @@ if __name__ == "__main__":
             args.policy,
             env,
             verbose=1,
-            n_steps=args.ep_length // 8,
+            n_steps=128,
             batch_size=128,
-            n_epochs=3,
+            n_epochs=5,
             gamma=0.998,
+            gae_lambda=0.95,
+            ent_coef=0.01, 
+            vf_coef=0.5,
+            max_grad_norm=0.5,
             tensorboard_log=sess_path,
             device=args.device,
+            learning_rate=2e-4,
         )
 
     if args.device == "cuda":
         print("torch compiling")
-        model.policy = torch.compile(model.policy, mode="max-autotune")
+        model.policy = torch.compile(model.policy, mode="reduce-overhead")
         print("torch compiled")
 
-    for i in range(learn_steps):
-        model.learn(
-            total_timesteps=args.ep_length * args.n_envs * 1000,
-            callback=CallbackList(callbacks),
-        )
+    with profile(
+        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(model.tensorboard_log),
+        schedule=torch.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
+        with_stack=True,
+        with_modules=True,
+    ) as prof:
+        for i in range(learn_steps):
+            model.learn(
+                total_timesteps=100000000, # args.ep_length * args.n_envs * 1000,
+                callback=CallbackList(callbacks),
+            )
+            prof.step()
 
     if args.use_wandb_logging:
         run.finish()
