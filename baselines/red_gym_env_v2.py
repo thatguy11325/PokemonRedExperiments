@@ -545,21 +545,21 @@ class RedGymEnv(Env):
 
     def get_explore_map(self):
         for (x, y, map_n), v in self.seen_coords.items():
-            gx, gy = self.get_global_coords(x, y, map_n)
-            if gx >= self.explore_map.shape[0] or gy >= self.explore_map.shape[1]:
+            gy, gx = self.get_global_coords(x, y, map_n)
+            if gy >= self.explore_map.shape[0] or gx >= self.explore_map.shape[1]:
                 print(
                     f"coord out of bounds! global: ({gx}, {gy}) game: ({x}, {y}, {map_n})"
                 )
             else:
-                self.explore_map[gx, gy] = int(255 * v)
+                self.explore_map[gy, gx] = int(255 * v)
 
-        gx, gy = self.get_global_coords(*self.get_game_coords())
-        if gx >= self.explore_map.shape[0] or gy >= self.explore_map.shape[1]:
+        gy, gx = self.get_global_coords(*self.get_game_coords())
+        if gy >= self.explore_map.shape[0] or gx >= self.explore_map.shape[1]:
             out = np.zeros((self.coords_pad * 2, self.coords_pad * 2), dtype=np.uint8)
         else:
             out = self.explore_map[
-                gx - self.coords_pad : gx + self.coords_pad,
                 gy - self.coords_pad : gy + self.coords_pad,
+                gx - self.coords_pad : gx + self.coords_pad,
             ]
         return repeat(out, "h w -> (h h2) (w w2)", h2=2, w2=2)
 

@@ -261,7 +261,7 @@ if __name__ == "__main__":
     with nullcontext():
         for i in range(learn_steps):
             model.learn(
-                total_timesteps=10_000_000, # 100_000_000, # args.ep_length * args.n_envs * 1000,
+                total_timesteps=100_000_000, # args.ep_length * args.n_envs * 1000,
                 callback=CallbackList(callbacks),
             )
             # prof.step()
