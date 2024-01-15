@@ -55,7 +55,7 @@ class TensorboardCallback(BaseCallback):
             images_row = rearrange(np.array(images).squeeze(1), "(r f) h w c -> (r c h) (f w)", r=2)
             self.logger.record("trajectory/image", Image(images_row, "HW"), exclude=("stdout", "log", "json", "csv"))
 
-            explore_map = np.array(self.training_env.get_attr("explore_map"))
+            explore_map = np.array(self.training_env.env_method("get_explore_map"))
             map_sum = reduce(explore_map, "f h w -> h w", "max")
             self.logger.record("trajectory/explore_sum", Image(map_sum, "HW"), exclude=("stdout", "log", "json", "csv"))
 
