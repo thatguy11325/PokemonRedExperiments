@@ -157,9 +157,6 @@ class RedGymEnv(Env):
         # restart game, skipping credits
         self.explore_map_dim = 384
         if first:
-            self.explore_map = np.zeros(
-                (self.explore_map_dim, self.explore_map_dim), dtype=np.uint8
-            )
             self.recent_screens = deque()  # np.zeros(self.output_shape, dtype=np.uint8)
             self.recent_actions = (
                 deque()
@@ -175,7 +172,6 @@ class RedGymEnv(Env):
                 self.pyboy.load_state(f)
             self.init_map_mem()
 
-            self.explore_map.fill(0)
             # self.recent_screens.fill(0)
             # self.recent_actions.fill(0)
             self.recent_screens.clear()
@@ -298,7 +294,6 @@ class RedGymEnv(Env):
         self.run_action_on_emulator(action)
         # self.update_recent_actions(action)
         self.update_seen_coords()
-        # self.update_explore_map()
         self.update_heal_reward()
         self.update_pokedex()
         self.update_moves_obtained()
@@ -307,7 +302,7 @@ class RedGymEnv(Env):
         new_reward = self.update_reward()
         self.last_health = self.read_hp_fraction()
         self.update_map_progress()
-        
+
         self.append_agent_stats(action)
 
         step_limit_reached = self.check_if_done()
@@ -529,35 +524,34 @@ class RedGymEnv(Env):
         self.seen_map_ids[map_n] = 1
 
     def get_global_coords(self, x_pos, y_pos, map_n):
-        c = (
+        gx, gy = (
             np.array([x_pos, -y_pos])
             + self.get_map_location(map_n)["coordinates"]
             + self.coords_pad * 2
         )
-        return self.explore_map.shape[0] - c[1], c[0]
-
-    def update_explore_map(self):
-        c = self.get_global_coords(*self.get_game_coords())
-        if c[0] >= self.explore_map.shape[0] or c[1] >= self.explore_map.shape[1]:
-            print(f"coord out of bounds! global: {c} game: {self.get_game_coords()}")
-        else:
-            self.explore_map[c[0], c[1]] = 255
+        return self.explore_map.shape[0] - gy, gx
 
     def get_explore_map(self):
+        explore_map = np.zeros(
+            (self.explore_map_dim, self.explore_map_dim), dtype=np.uint8
+        )
         for (x, y, map_n), v in self.seen_coords.items():
             gy, gx = self.get_global_coords(x, y, map_n)
-            if gy >= self.explore_map.shape[0] or gx >= self.explore_map.shape[1]:
+            if gy >= explore_map.shape[0] or gx >= explore_map.shape[1]:
                 print(
                     f"coord out of bounds! global: ({gx}, {gy}) game: ({x}, {y}, {map_n})"
                 )
             else:
-                self.explore_map[gy, gx] = int(255 * v)
+                # y - y1 = m(x - x1)
+                # y = (255 - 200) / (1 - 0) * (x - 0) + 200
+                # y = 55x + 200
+                explore_map[gy, gx] = int(55 * v + 200)  # int(255 * v)
 
         gy, gx = self.get_global_coords(*self.get_game_coords())
-        if gy >= self.explore_map.shape[0] or gx >= self.explore_map.shape[1]:
+        if gy >= explore_map.shape[0] or gx >= explore_map.shape[1]:
             out = np.zeros((self.coords_pad * 2, self.coords_pad * 2), dtype=np.uint8)
         else:
-            out = self.explore_map[
+            out = explore_map[
                 gy - self.coords_pad : gy + self.coords_pad,
                 gx - self.coords_pad : gx + self.coords_pad,
             ]
@@ -622,7 +616,7 @@ class RedGymEnv(Env):
                     / Path(
                         f"frame_r{self.total_reward:.4f}_{self.reset_count}_full_explore_map.jpeg"
                     ),
-                    self.explore_map,
+                    self.get_explore_map()
                 )
                 plt.imsave(
                     fs_path
