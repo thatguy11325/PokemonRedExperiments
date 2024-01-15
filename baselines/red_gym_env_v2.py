@@ -11,13 +11,14 @@ from einops import repeat
 from gymnasium import Env, spaces
 from pyboy import PyBoy
 from pyboy.utils import WindowEvent
-from skimage.transform import downscale_local_mean
 
-event_flags_start = 0xD747
-event_flags_end = (
+EVENT_FLAGS_START = 0xD747
+EVENT_FLAGS_END = (
     0xD7F6  # 0xD761 # 0xD886 temporarily lower event flag range for obs input
 )
-museum_ticket = (0xD754, 0)
+MUSEUM_TICKET = (0xD754, 0)
+PARTY_SIZE = 0xD163
+PARTY_LEVEL_ADDRS = [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
 
 
 class RedGymEnv(Env):
@@ -54,8 +55,7 @@ class RedGymEnv(Env):
             else config["instance_id"]
         )
         self.reset_state = config["reset_state"]
-        self.reset_rewards = config["reset_rewards"]
-        self.forgetting_factor = config["forgetting_factor"]
+        self.reset_forgetting_factor = config["reset_forgetting_factor"]
         self.s_path.mkdir(exist_ok=True)
         self.full_frame_writer = None
         self.model_frame_writer = None
@@ -118,7 +118,7 @@ class RedGymEnv(Env):
                     "level": spaces.Box(low=-1, high=1, shape=(self.enc_freqs,)),
                     "badges": spaces.MultiBinary(8),
                     "events": spaces.MultiBinary(
-                        (event_flags_end - event_flags_start) * 8
+                        (EVENT_FLAGS_END - EVENT_FLAGS_START) * 8
                     ),
                     "map": spaces.Box(
                         low=0,
@@ -164,39 +164,33 @@ class RedGymEnv(Env):
             self.seen_pokemon = np.zeros(152, dtype=np.uint8)
             self.caught_pokemon = np.zeros(152, dtype=np.uint8)
             self.moves_obtained = np.zeros(0xA5, dtype=np.uint8)
-            self.init_npc_mem()
-            self.init_hidden_obj_mem()
 
         if first or self.reset_state:
             with open(self.init_state, "rb") as f:
                 self.pyboy.load_state(f)
-            self.init_map_mem()
-
-            # self.recent_screens.fill(0)
-            # self.recent_actions.fill(0)
             self.recent_screens.clear()
             self.recent_actions.clear()
             self.seen_pokemon.fill(0)
             self.caught_pokemon.fill(0)
             self.moves_obtained.fill(0)
+            self.base_event_flags = sum(
+                self.bit_count(self.read_m(i))
+                for i in range(EVENT_FLAGS_START, EVENT_FLAGS_END)
+            )
+
+        self.reset_forget_explore()
 
         self.levels_satisfied = False
         self.base_explore = 0
         self.max_opponent_level = 0
         self.max_event_rew = 0
         self.max_level_rew = 0
+        self.max_level_sum = 0
         self.last_health = 1
         self.total_healing_rew = 0
         self.died_count = 0
         self.party_size = 0
         self.step_count = 0
-
-        self.base_event_flags = sum(
-            [
-                self.bit_count(self.read_m(i))
-                for i in range(event_flags_start, event_flags_end)
-            ]
-        )
 
         self.current_event_flags_set = {}
 
@@ -231,18 +225,21 @@ class RedGymEnv(Env):
     def init_hidden_obj_mem(self):
         self.seen_hidden_objs = {}
 
-    def forget_explore(self):
+    def reset_forget_explore(self):
         self.seen_coords.update(
-            (k, v * self.forgetting_factor) for k, v in self.seen_coords.items()
+            (k, v * self.reset_forgetting_factor["coords"])
+            for k, v in self.seen_coords.items()
         )
-        self.seen_map_ids.update(
-            (k, v * self.forgetting_factor) for k, v in self.seen_map_ids.items()
-        )
+        # self.seen_map_ids.update(
+        #    (k, v * self.forgetting_factor) for k, v in self.seen_map_ids.items()
+        # )
         self.seen_npcs.update(
-            (k, v * self.forgetting_factor) for k, v in self.seen_npcs.items()
+            (k, v * self.reset_forgetting_factor["npc"])
+            for k, v in self.seen_npcs.items()
         )
         self.seen_hidden_objs.update(
-            (k, v * self.forgetting_factor) for k, v in self.seen_hidden_objs.items()
+            (k, v * self.reset_forgetting_factor["hidden_objs"])
+            for k, v in self.seen_hidden_objs.items()
         )
 
     def render(self, reduce_res=True):
@@ -289,8 +286,6 @@ class RedGymEnv(Env):
         if self.save_video and self.step_count == 0:
             self.start_video()
 
-        if self.step_count % 1000 == 0:
-            self.forget_explore()
         self.run_action_on_emulator(action)
         # self.update_recent_actions(action)
         self.update_seen_coords()
@@ -545,7 +540,8 @@ class RedGymEnv(Env):
                 # y - y1 = m(x - x1)
                 # y = (255 - 200) / (1 - 0) * (x - 0) + 200
                 # y = 55x + 200
-                explore_map[gy, gx] = int(55 * v + 200)  # int(255 * v)
+                # explore_map[gy, gx] = int(55 * v + 200)  # int(255 * v)
+                explore_map[gy, gx] = 255
 
         gy, gx = self.get_global_coords(*self.get_game_coords())
         if gy >= explore_map.shape[0] or gx >= explore_map.shape[1]:
@@ -616,7 +612,7 @@ class RedGymEnv(Env):
                     / Path(
                         f"frame_r{self.total_reward:.4f}_{self.reset_count}_full_explore_map.jpeg"
                     ),
-                    self.get_explore_map()
+                    self.get_explore_map(),
                 )
                 plt.imsave(
                     fs_path
@@ -655,29 +651,22 @@ class RedGymEnv(Env):
     def read_event_bits(self):
         return [
             int(bit)
-            for i in range(event_flags_start, event_flags_end)
+            for i in range(EVENT_FLAGS_START, EVENT_FLAGS_END)
             for bit in f"{self.read_m(i):08b}"
         ]
 
-    def get_levels_sum(self):
-        min_poke_level = 2
-        starter_additional_levels = 4
-        poke_levels = [
-            max(self.read_m(a) - min_poke_level, 0)
-            for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]
-        ]
-        return max(sum(poke_levels) - starter_additional_levels, 0)
-
     def get_levels_reward(self):
-        explore_thresh = 22
-        scale_factor = 4
-        level_sum = self.get_levels_sum()
-        if level_sum < explore_thresh:
-            scaled = level_sum
+        party_size = self.read_m(PARTY_SIZE)
+        party_levels = [
+            x
+            for x in [self.readm_m(addr) for addr in PARTY_LEVEL_ADDRS[:party_size]]
+            if x > 0
+        ]
+        self.max_level_sum = max(self.max_level_sum, sum(party_levels))
+        if self.max_level_sum < 30:
+            return self.max_level_sum
         else:
-            scaled = (level_sum - explore_thresh) / scale_factor + explore_thresh
-        self.max_level_rew = max(self.max_level_rew, scaled)
-        return self.max_level_rew
+            return 30 + (self.max_level_sum - 30) / 4
 
     def get_badges(self):
         return self.bit_count(self.read_m(0xD356))
@@ -694,11 +683,11 @@ class RedGymEnv(Env):
             sum(
                 [
                     self.bit_count(self.read_m(i))
-                    for i in range(event_flags_start, event_flags_end)
+                    for i in range(EVENT_FLAGS_START, EVENT_FLAGS_END)
                 ]
             )
             - self.base_event_flags
-            - int(self.read_bit(museum_ticket[0], museum_ticket[1])),
+            - int(self.read_bit(*MUSEUM_TICKET)),
             0,
         )
 
@@ -715,12 +704,18 @@ class RedGymEnv(Env):
             "caught_pokemon": self.reward_scale * sum(self.caught_pokemon) * 0.000010,
             "moves_obtained": self.reward_scale * sum(self.moves_obtained) * 0.000010,
             "explore_hidden_objs": self.reward_scale
-            * self.explore_hidden_obj_weight
             * sum(self.seen_hidden_objs.values())
             * 0.00015,
+            "level": self.get_levels_reward(),
+            # "opponent_level": self.max_opponent_level,
+            # "death_reward": self.died_count,
             "badge": self.get_badges() * 5,
+            "heal": self.total_healing_rew,
             "explore": sum(self.seen_coords.values()) * 0.01,
-            "explore_maps": sum(self.seen_map_ids.values()) * 0.00015,
+            "explore_maps": self.reward_scale
+            * self.explore_npc_weight
+            * sum(self.seen_map_ids.values())
+            * 0.00015,
         }
 
         return state_scores
@@ -749,8 +744,7 @@ class RedGymEnv(Env):
         # if health increased and party size did not change
         if cur_health > self.last_health and self.read_m(0xD163) == self.party_size:
             if self.last_health > 0:
-                heal_amount = cur_health - self.last_health
-                self.total_healing_rew += heal_amount
+                self.total_healing_rew += cur_health - self.last_health
             else:
                 self.died_count += 1
 

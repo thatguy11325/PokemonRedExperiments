@@ -136,7 +136,12 @@ if __name__ == "__main__":
         "explore_npc_weight": 1,  # 2.5
         "frame_stacks": args.frame_stacks,
         "policy": args.policy,
-        "forgetting_factor": .998
+        "reset_forgetting_factor": {
+            "npc": 1,
+            "hidden_objs": 0,
+            "death": 0,
+            "coords": 0,
+        }
     }
 
     print(env_config)
@@ -232,16 +237,17 @@ if __name__ == "__main__":
             env,
             verbose=1,
             n_steps=128,
-            batch_size=128,
-            n_epochs=5,
+            batch_size=32768, # 128,
+            n_epochs=4,
             gamma=0.998,
             gae_lambda=0.95,
             ent_coef=0.01, 
             vf_coef=0.5,
+            normalize_advantage=True,
             max_grad_norm=0.5,
             tensorboard_log=sess_path,
             device=args.device,
-            learning_rate=2e-4,
+            learning_rate=lambda remaining_progress: remaining_progress * 2.5e-4  # 2.5e-4,
         )
 
     if args.device == "cuda":
