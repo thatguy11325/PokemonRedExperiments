@@ -81,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--n-envs", type=int, default=multiprocessing.cpu_count())
     parser.add_argument("--wandb-api-key", type=str, default=None)
     parser.add_argument("--wandb", action="store_true")
-    parser.add_argument("--ep-length", type=int, default=2048 * 10)
+    parser.add_argument("--ep-length", type=int, default=32768)
     parser.add_argument("--sess-id", type=str, default=str(uuid.uuid4())[:8])
     parser.add_argument("--save-video", action="store_true")
     parser.add_argument("--fast-video", action="store_true")
@@ -237,7 +237,7 @@ if __name__ == "__main__":
             env,
             verbose=1,
             n_steps=128,
-            batch_size=32768, # 128,
+            batch_size=128,
             n_epochs=4,
             gamma=0.998,
             gae_lambda=0.95,
