@@ -234,7 +234,8 @@ class RedGymEnv(Env):
             for k, v in self.seen_coords.items()
         )
         self.seen_map_ids.update(
-           (k, v * self.reset_forgetting_factor["map_ids"]) for k, v in self.seen_map_ids.items()
+            (k, v * self.reset_forgetting_factor["map_ids"])
+            for k, v in self.seen_map_ids.items()
         )
         self.seen_npcs.update(
             (k, v * self.reset_forgetting_factor["npc"])
@@ -521,20 +522,20 @@ class RedGymEnv(Env):
         self.seen_coords[(x_pos, y_pos, map_n)] = 1
         self.seen_map_ids[map_n] = 1
 
-    def get_global_coords(self, x_pos, y_pos, map_n):
+    def get_global_coords(self, x_pos, y_pos, map_n, explore_map_shape):
         gx, gy = (
             np.array([x_pos, -y_pos])
             + self.get_map_location(map_n)["coordinates"]
             + self.coords_pad * 2
         )
-        return self.explore_map.shape[0] - gy, gx
+        return explore_map_shape[0] - gy, gx
 
     def get_explore_map(self):
         explore_map = np.zeros(
             (self.explore_map_dim, self.explore_map_dim), dtype=np.uint8
         )
         for (x, y, map_n), v in self.seen_coords.items():
-            gy, gx = self.get_global_coords(x, y, map_n)
+            gy, gx = self.get_global_coords(x, y, map_n, explore_map.shape)
             if gy >= explore_map.shape[0] or gx >= explore_map.shape[1]:
                 print(
                     f"coord out of bounds! global: ({gx}, {gy}) game: ({x}, {y}, {map_n})"
@@ -546,13 +547,13 @@ class RedGymEnv(Env):
                 # explore_map[gy, gx] = int(55 * v + 200)  # int(255 * v)
                 explore_map[gy, gx] = 255
 
-        gy, gx = self.get_global_coords(*self.get_game_coords())
+        gy, gx = self.get_global_coords(*self.get_game_coords(), explore_map.shape)
         if gy >= explore_map.shape[0] or gx >= explore_map.shape[1]:
             out = np.zeros((self.coords_pad * 2, self.coords_pad * 2), dtype=np.uint8)
         else:
             out = explore_map[
-                gy - self.coords_pad : gy + self.coords_pad,
-                gx - self.coords_pad : gx + self.coords_pad,
+                (gy - self.coords_pad) : (gy + self.coords_pad),
+                (gx - self.coords_pad) : (gx + self.coords_pad),
             ]
         return repeat(out, "h w -> (h h2) (w w2)", h2=2, w2=2)
 
