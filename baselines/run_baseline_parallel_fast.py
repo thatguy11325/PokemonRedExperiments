@@ -205,7 +205,7 @@ if __name__ == "__main__":
         callbacks.append(WandbCallback())
 
     # env_checker.check_env(env)
-    learn_steps = 3 # 40
+    learn_steps = 40
     # put a checkpoint here you want to start from
     file_name = "session_e41c9eff/poke_38207488_steps"
 
@@ -261,7 +261,7 @@ if __name__ == "__main__":
     with nullcontext():
         for i in range(learn_steps):
             model.learn(
-                total_timesteps=100000000, # 100000000, # args.ep_length * args.n_envs * 1000,
+                total_timesteps=10_000_000, # 100_000_000, # args.ep_length * args.n_envs * 1000,
                 callback=CallbackList(callbacks),
             )
             # prof.step()

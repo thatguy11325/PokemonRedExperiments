@@ -293,7 +293,7 @@ class RedGymEnv(Env):
         if self.save_video and self.step_count == 0:
             self.start_video()
 
-        if self.step_count % 100 == 0:
+        if self.step_count % 1000 == 0:
             self.forget_explore()
         self.run_action_on_emulator(action)
         # self.update_recent_actions(action)
@@ -544,7 +544,7 @@ class RedGymEnv(Env):
             self.explore_map[c[0], c[1]] = 255
 
     def get_explore_map(self):
-        for (x, y, map_n), v in self.seen_coords:
+        for (x, y, map_n), v in self.seen_coords.items():
             gx, gy = self.get_global_coords(x, y, map_n)
             if gx >= self.explore_map.shape[0] or gy >= self.explore_map.shape[1]:
                 print(
