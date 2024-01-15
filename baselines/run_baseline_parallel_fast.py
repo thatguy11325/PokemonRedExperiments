@@ -141,6 +141,7 @@ if __name__ == "__main__":
             "hidden_objs": 0,
             "death": 0,
             "coords": 0,
+            "map_ids": 1
         }
     }
 

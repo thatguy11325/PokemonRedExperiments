@@ -164,6 +164,9 @@ class RedGymEnv(Env):
             self.seen_pokemon = np.zeros(152, dtype=np.uint8)
             self.caught_pokemon = np.zeros(152, dtype=np.uint8)
             self.moves_obtained = np.zeros(0xA5, dtype=np.uint8)
+            self.init_map_mem()
+            self.init_npc_mem()
+            self.init_hidden_obj_mem()
 
         if first or self.reset_state:
             with open(self.init_state, "rb") as f:
@@ -230,9 +233,9 @@ class RedGymEnv(Env):
             (k, v * self.reset_forgetting_factor["coords"])
             for k, v in self.seen_coords.items()
         )
-        # self.seen_map_ids.update(
-        #    (k, v * self.forgetting_factor) for k, v in self.seen_map_ids.items()
-        # )
+        self.seen_map_ids.update(
+           (k, v * self.reset_forgetting_factor["map_ids"]) for k, v in self.seen_map_ids.items()
+        )
         self.seen_npcs.update(
             (k, v * self.reset_forgetting_factor["npc"])
             for k, v in self.seen_npcs.items()
@@ -659,7 +662,7 @@ class RedGymEnv(Env):
         party_size = self.read_m(PARTY_SIZE)
         party_levels = [
             x
-            for x in [self.readm_m(addr) for addr in PARTY_LEVEL_ADDRS[:party_size]]
+            for x in [self.read_m(addr) for addr in PARTY_LEVEL_ADDRS[:party_size]]
             if x > 0
         ]
         self.max_level_sum = max(self.max_level_sum, sum(party_levels))
