@@ -1,4 +1,5 @@
 import argparse
+from contextlib import nullcontext
 import multiprocessing
 import os
 import random
@@ -135,6 +136,7 @@ if __name__ == "__main__":
         "explore_npc_weight": 1,  # 2.5
         "frame_stacks": args.frame_stacks,
         "policy": args.policy,
+        "forgetting_factor": .998
     }
 
     print(env_config)
@@ -165,23 +167,12 @@ if __name__ == "__main__":
             make_env(
                 i,
                 args.poke_env_type,
-                reset_exploration_rewards_config,
-                seed=random.randint(0, 4096)
-                if args.seed_style == "random"
-                else 4096 * i // 4,
-            )
-            for i in range(args.n_envs // 4 * 3)
-        ]
-        + [
-            make_env(
-                i,
-                args.poke_env_type,
                 reset_none_config,
                 seed=random.randint(0, 4096)
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs // 8)
+            for i in range(args.n_envs // 8 * 7)
         ]
     )
 
@@ -214,7 +205,7 @@ if __name__ == "__main__":
         callbacks.append(WandbCallback())
 
     # env_checker.check_env(env)
-    learn_steps = 40
+    learn_steps = 3 # 40
     # put a checkpoint here you want to start from
     file_name = "session_e41c9eff/poke_38207488_steps"
 
@@ -258,19 +249,22 @@ if __name__ == "__main__":
         model.policy = torch.compile(model.policy, mode="reduce-overhead")
         print("torch compiled")
 
+    """
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
         on_trace_ready=torch.profiler.tensorboard_trace_handler(model.tensorboard_log),
-        schedule=torch.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
+        schedule=torch.profiler.schedule(wait=0, warmup=1, active=1, repeat=1),
         with_stack=True,
         with_modules=True,
     ) as prof:
+    """
+    with nullcontext():
         for i in range(learn_steps):
             model.learn(
-                total_timesteps=100000000, # args.ep_length * args.n_envs * 1000,
+                total_timesteps=100000000, # 100000000, # args.ep_length * args.n_envs * 1000,
                 callback=CallbackList(callbacks),
             )
-            prof.step()
+            # prof.step()
 
-    if args.use_wandb_logging:
+    if args.wandb:
         run.finish()

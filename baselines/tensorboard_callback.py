@@ -39,7 +39,7 @@ class TensorboardCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         
-        if self.training_env.env_method("check_if_done", indices=[0])[0]:
+        if True or self.training_env.env_method("check_if_done", indices=[0])[0]:
             all_infos = self.training_env.get_attr("agent_stats")
             all_final_infos = [stats for stats in all_infos[-1]] if all_infos else {}
             mean_infos, distributions = merge_dicts(all_final_infos)
@@ -52,7 +52,7 @@ class TensorboardCallback(BaseCallback):
                 self.logger.record(f"env_stats_max/{key}", max(distrib))
                 
             images = self.training_env.get_attr("recent_screens")
-            images_row = rearrange(np.array(images), "(r f) h w c -> (r c h) (f w)", r=2)
+            images_row = rearrange(np.array(images).squeeze(1), "(r f) h w c -> (r c h) (f w)", r=2)
             self.logger.record("trajectory/image", Image(images_row, "HW"), exclude=("stdout", "log", "json", "csv"))
 
             explore_map = np.array(self.training_env.get_attr("explore_map"))

@@ -1,5 +1,6 @@
 import json
 import uuid
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +55,7 @@ class RedGymEnv(Env):
         )
         self.reset_state = config["reset_state"]
         self.reset_rewards = config["reset_rewards"]
+        self.forgetting_factor = config["forgetting_factor"]
         self.s_path.mkdir(exist_ok=True)
         self.full_frame_writer = None
         self.model_frame_writer = None
@@ -158,13 +160,13 @@ class RedGymEnv(Env):
             self.explore_map = np.zeros(
                 (self.explore_map_dim, self.explore_map_dim), dtype=np.uint8
             )
-            self.recent_screens = np.zeros(self.output_shape, dtype=np.uint8)
-            self.recent_actions = np.zeros((self.frame_stacks,), dtype=np.uint8)
+            self.recent_screens = deque()  # np.zeros(self.output_shape, dtype=np.uint8)
+            self.recent_actions = (
+                deque()
+            )  # np.zeros((self.frame_stacks,), dtype=np.uint8)
             self.seen_pokemon = np.zeros(152, dtype=np.uint8)
             self.caught_pokemon = np.zeros(152, dtype=np.uint8)
             self.moves_obtained = np.zeros(0xA5, dtype=np.uint8)
-
-        if first or self.reset_state or self.reset_rewards:
             self.init_npc_mem()
             self.init_hidden_obj_mem()
 
@@ -174,8 +176,10 @@ class RedGymEnv(Env):
             self.init_map_mem()
 
             self.explore_map.fill(0)
-            self.recent_screens.fill(0)
-            self.recent_actions.fill(0)
+            # self.recent_screens.fill(0)
+            # self.recent_actions.fill(0)
+            self.recent_screens.clear()
+            self.recent_actions.clear()
             self.seen_pokemon.fill(0)
             self.caught_pokemon.fill(0)
             self.moves_obtained.fill(0)
@@ -207,7 +211,9 @@ class RedGymEnv(Env):
 
         self.max_map_progress = 0
         self.progress_reward = self.get_game_state_reward()
-        self.total_reward = self.reward_scale * sum([val for _, val in self.progress_reward.items()])
+        self.total_reward = self.reward_scale * sum(
+            [val for _, val in self.progress_reward.items()]
+        )
 
         # lazy random seed setting
         if seed:
@@ -221,13 +227,27 @@ class RedGymEnv(Env):
 
     def init_map_mem(self):
         self.seen_coords = {}
-        self.seen_map_ids = set()
+        self.seen_map_ids = {}
 
     def init_npc_mem(self):
-        self.seen_npcs = set()
+        self.seen_npcs = {}
 
     def init_hidden_obj_mem(self):
-        self.seen_hidden_objs = set()
+        self.seen_hidden_objs = {}
+
+    def forget_explore(self):
+        self.seen_coords.update(
+            (k, v * self.forgetting_factor) for k, v in self.seen_coords.items()
+        )
+        self.seen_map_ids.update(
+            (k, v * self.forgetting_factor) for k, v in self.seen_map_ids.items()
+        )
+        self.seen_npcs.update(
+            (k, v * self.forgetting_factor) for k, v in self.seen_npcs.items()
+        )
+        self.seen_hidden_objs.update(
+            (k, v * self.forgetting_factor) for k, v in self.seen_hidden_objs.items()
+        )
 
     def render(self, reduce_res=True):
         game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]  # (144, 160, 3)
@@ -253,7 +273,7 @@ class RedGymEnv(Env):
             )
 
             return {
-                "screens": self.recent_screens,
+                "screens": np.array(self.recent_screens).reshape(self.output_shape),
                 "health": np.array([self.read_hp_fraction()]),
                 "level": self.fourier_encode(level_sum),
                 "badges": np.array(
@@ -261,39 +281,34 @@ class RedGymEnv(Env):
                 ),
                 "events": np.array(self.read_event_bits(), dtype=np.int8),
                 "map": self.get_explore_map()[:, :, None],
-                "recent_actions": self.recent_actions,
+                "recent_actions": np.array(self.recent_actions),
                 "caught_pokemon": self.caught_pokemon,
                 "seen_pokemon": self.seen_pokemon,
                 "moves_obtained": self.moves_obtained,
             }
         else:
-            return self.recent_screens
+            return np.array(self.recent_screens).reshape(self.output_shape)
 
     def step(self, action):
         if self.save_video and self.step_count == 0:
             self.start_video()
 
+        if self.step_count % 100 == 0:
+            self.forget_explore()
         self.run_action_on_emulator(action)
-        self.append_agent_stats(action)
-
-        self.update_recent_actions(action)
-
+        # self.update_recent_actions(action)
         self.update_seen_coords()
-
-        self.update_explore_map()
-
+        # self.update_explore_map()
         self.update_heal_reward()
-
         self.update_pokedex()
         self.update_moves_obtained()
-
         self.party_size = self.read_m(0xD163)
-
+        self.update_max_op_level()
         new_reward = self.update_reward()
-
         self.last_health = self.read_hp_fraction()
-
         self.update_map_progress()
+        
+        self.append_agent_stats(action)
 
         step_limit_reached = self.check_if_done()
 
@@ -303,6 +318,7 @@ class RedGymEnv(Env):
 
         # create a map of all event flags set, with names where possible
         # if step_limit_reached:
+        """
         if self.step_count % 100 == 0:
             for address in range(event_flags_start, event_flags_end):
                 val = self.read_m(address)
@@ -314,6 +330,7 @@ class RedGymEnv(Env):
                             self.current_event_flags_set[key] = self.event_names[key]
                         else:
                             print(f"could not find key: {key}")
+        """
 
         self.step_count += 1
 
@@ -389,12 +406,12 @@ class RedGymEnv(Env):
                 and self.pyboy.get_memory_value(0xCD3E) != 0x0
             ):
                 # add hidden object to seen hidden objects
-                self.seen_hidden_objs.add(
+                self.seen_hidden_objs[
                     (
                         self.pyboy.get_memory_value(0xD35E),
                         self.pyboy.get_memory_value(0xCD3F),
                     )
-                )
+                ] = 1
             elif any(
                 self.find_neighboring_sign(
                     sign_id, player_direction, player_x_tiles, player_y_tiles
@@ -423,7 +440,7 @@ class RedGymEnv(Env):
                 npc_candidates = [x for x in npc_distances if x[0]]
                 if npc_candidates:
                     _, npc_id = min(npc_candidates, key=lambda x: x[0])
-                    self.seen_npcs.add((self.pyboy.get_memory_value(0xD35E), npc_id))
+                    self.seen_npcs[(self.pyboy.get_memory_value(0xD35E), npc_id)] = 1
 
         if self.save_video and self.fast_video:
             self.add_video_frame()
@@ -447,10 +464,10 @@ class RedGymEnv(Env):
                 "levels_sum": sum(levels),
                 "ptypes": self.read_party(),
                 "hp": self.read_hp_fraction(),
-                "coord_count": len(self.seen_coords),
-                "map_id_count": len(self.seen_map_ids),
-                "npc_count": len(self.seen_npcs),
-                "hidden_obj_count": len(self.seen_hidden_objs),
+                "coord": sum(self.seen_coords.values()),
+                "map_id": sum(self.seen_map_ids.values()),
+                "npc": sum(self.seen_npcs.values()),
+                "hidden_obj": sum(self.seen_hidden_objs.values()),
                 "deaths": self.died_count,
                 "badge": self.get_badges(),
                 "event": self.progress_reward["event"],
@@ -459,6 +476,7 @@ class RedGymEnv(Env):
                 "caught_pokemon": int(sum(self.caught_pokemon)),
                 "seen_pokemon": int(sum(self.seen_pokemon)),
                 "moves_obtained": int(sum(self.moves_obtained)),
+                "opponent_level": self.max_opponent_level,
             }
         )
 
@@ -507,11 +525,10 @@ class RedGymEnv(Env):
 
     def update_seen_coords(self):
         x_pos, y_pos, map_n = self.get_game_coords()
-        self.seen_coords[(x_pos, y_pos, map_n)] = self.step_count
-        self.seen_map_ids.add(map_n)
+        self.seen_coords[(x_pos, y_pos, map_n)] = 1
+        self.seen_map_ids[map_n] = 1
 
-    def get_global_coords(self):
-        x_pos, y_pos, map_n = self.get_game_coords()
+    def get_global_coords(self, x_pos, y_pos, map_n):
         c = (
             np.array([x_pos, -y_pos])
             + self.get_map_location(map_n)["coordinates"]
@@ -520,30 +537,45 @@ class RedGymEnv(Env):
         return self.explore_map.shape[0] - c[1], c[0]
 
     def update_explore_map(self):
-        c = self.get_global_coords()
+        c = self.get_global_coords(*self.get_game_coords())
         if c[0] >= self.explore_map.shape[0] or c[1] >= self.explore_map.shape[1]:
             print(f"coord out of bounds! global: {c} game: {self.get_game_coords()}")
         else:
             self.explore_map[c[0], c[1]] = 255
 
     def get_explore_map(self):
-        c = self.get_global_coords()
-        if c[0] >= self.explore_map.shape[0] or c[1] >= self.explore_map.shape[1]:
+        for (x, y, map_n), v in self.seen_coords:
+            gx, gy = self.get_global_coords(x, y, map_n)
+            if gx >= self.explore_map.shape[0] or gy >= self.explore_map.shape[1]:
+                print(
+                    f"coord out of bounds! global: ({gx}, {gy}) game: ({x}, {y}, {map_n})"
+                )
+            else:
+                self.explore_map[gx, gy] = int(255 * v)
+
+        gx, gy = self.get_global_coords(*self.get_game_coords())
+        if gx >= self.explore_map.shape[0] or gy >= self.explore_map.shape[1]:
             out = np.zeros((self.coords_pad * 2, self.coords_pad * 2), dtype=np.uint8)
         else:
             out = self.explore_map[
-                c[0] - self.coords_pad : c[0] + self.coords_pad,
-                c[1] - self.coords_pad : c[1] + self.coords_pad,
+                gx - self.coords_pad : gx + self.coords_pad,
+                gy - self.coords_pad : gy + self.coords_pad,
             ]
         return repeat(out, "h w -> (h h2) (w w2)", h2=2, w2=2)
 
     def update_recent_screens(self, cur_screen):
-        self.recent_screens = np.roll(self.recent_screens, 1, axis=2)
-        self.recent_screens[:, :, 0] = cur_screen[:, :, 0]
+        # self.recent_screens = np.roll(self.recent_screens, 1, axis=2)
+        # self.recent_screens[:, :, 0] = cur_screen[:, :, 0]
+        self.recent_screens.append(cur_screen)
+        if len(self.recent_screens) > self.frame_stacks:
+            self.recent_screens.popleft()
 
     def update_recent_actions(self, action):
-        self.recent_actions = np.roll(self.recent_actions, 1)
-        self.recent_actions[0] = action
+        # self.recent_actions = np.roll(self.recent_actions, 1)
+        # self.recent_actions[0] = action
+        self.recent_actions.append(action)
+        if len(self.recent_actions) > self.frame_stacks:
+            self.recent_actions.popleft()
 
     def update_reward(self):
         # compute reward
@@ -553,15 +585,6 @@ class RedGymEnv(Env):
 
         self.total_reward = new_total
         return new_step
-
-    def group_rewards(self):
-        prog = self.progress_reward
-        # these values are only used by memory
-        return (
-            prog["level"] * 100 / self.reward_scale,
-            self.read_hp_fraction() * 2000,
-            prog["explore"] * 150 / (self.explore_weight * self.reward_scale),
-        )
 
     def check_if_done(self):
         done = self.step_count >= self.max_steps - 1
@@ -690,14 +713,20 @@ class RedGymEnv(Env):
         # https://github.com/pret/pokered/blob/91dc3c9f9c8fd529bb6e8307b58b96efa0bec67e/constants/event_constants.asm
         state_scores = {
             "event": self.update_max_event_rew(),
-            "explore_npcs": self.reward_scale * self.explore_npc_weight * len(self.seen_npcs) * 0.00015,
+            "explore_npcs": self.reward_scale
+            * self.explore_npc_weight
+            * sum(self.seen_npcs.values())
+            * 0.00015,
             "seen_pokemon": self.reward_scale * sum(self.seen_pokemon) * 0.000010,
             "caught_pokemon": self.reward_scale * sum(self.caught_pokemon) * 0.000010,
             "moves_obtained": self.reward_scale * sum(self.moves_obtained) * 0.000010,
-            "explore_hidden_objs": self.reward_scale * self.explore_hidden_obj_weight * len(self.seen_hidden_objs) * 0.00015,
+            "explore_hidden_objs": self.reward_scale
+            * self.explore_hidden_obj_weight
+            * sum(self.seen_hidden_objs.values())
+            * 0.00015,
             "badge": self.get_badges() * 5,
-            "explore": len(self.seen_coords) * 0.01,
-            "explore_maps": len(self.seen_map_ids) * 0.015,
+            "explore": sum(self.seen_coords.values()) * 0.01,
+            "explore_maps": sum(self.seen_map_ids.values()) * 0.00015,
         }
 
         return state_scores
@@ -781,6 +810,7 @@ class RedGymEnv(Env):
     # built-in since python 3.10
     def bit_count(self, bits):
         return bin(bits).count("1")
+        # return bits.bit_count()
 
     def fourier_encode(self, val):
         return np.sin(val * 2 ** np.arange(self.enc_freqs))
