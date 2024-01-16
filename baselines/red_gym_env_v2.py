@@ -1,4 +1,5 @@
 import json
+import random
 import uuid
 from collections import deque
 from pathlib import Path
@@ -56,6 +57,8 @@ class RedGymEnv(Env):
         )
         self.reset_state = config["reset_state"]
         self.reset_forgetting_factor = config["reset_forgetting_factor"]
+        self.step_forgetting_factor = config["step_forgetting_factor"]
+        self.forgetting_frequency = config["forgetting_frequency"]
         self.s_path.mkdir(exist_ok=True)
         self.full_frame_writer = None
         self.model_frame_writer = None
@@ -180,8 +183,14 @@ class RedGymEnv(Env):
                 self.bit_count(self.read_m(i))
                 for i in range(EVENT_FLAGS_START, EVENT_FLAGS_END)
             )
+        
+            # lazy random seed setting
+            if not seed:
+                seed = random.randint(0, 4096)
+            for _ in range(seed):
+                self.pyboy.tick()
 
-        self.reset_forget_explore()
+            self.reset_forget_explore()
 
         self.levels_satisfied = False
         self.base_explore = 0
@@ -207,11 +216,6 @@ class RedGymEnv(Env):
         self.total_reward = self.reward_scale * sum(
             [val for _, val in self.progress_reward.items()]
         )
-
-        # lazy random seed setting
-        if seed:
-            for _ in range(seed):
-                self.pyboy.tick()
 
         self.agent_stats = []
 
@@ -243,6 +247,24 @@ class RedGymEnv(Env):
         )
         self.seen_hidden_objs.update(
             (k, v * self.reset_forgetting_factor["hidden_objs"])
+            for k, v in self.seen_hidden_objs.items()
+        )
+    
+    def step_forget_explore(self):
+        self.seen_coords.update(
+            (k, v * self.step_forgetting_factor["coords"])
+            for k, v in self.seen_coords.items()
+        )
+        self.seen_map_ids.update(
+            (k, v * self.step_forgetting_factor["map_ids"])
+            for k, v in self.seen_map_ids.items()
+        )
+        self.seen_npcs.update(
+            (k, v * self.step_forgetting_factor["npc"])
+            for k, v in self.seen_npcs.items()
+        )
+        self.seen_hidden_objs.update(
+            (k, v * self.step_forgetting_factor["hidden_objs"])
             for k, v in self.seen_hidden_objs.items()
         )
 
@@ -289,6 +311,11 @@ class RedGymEnv(Env):
     def step(self, action):
         if self.save_video and self.step_count == 0:
             self.start_video()
+
+        # counter intuitive but we short circuit on the step count
+        # to avoid a more expensive read_m of is in battle
+        if self.step_count % self.forgetting_frequency == 0 and self.read_m(0xd057) == 0:
+            self.step_forget_explore()
 
         self.run_action_on_emulator(action)
         # self.update_recent_actions(action)
@@ -541,21 +568,9 @@ class RedGymEnv(Env):
                     f"coord out of bounds! global: ({gx}, {gy}) game: ({x}, {y}, {map_n})"
                 )
             else:
-                # y - y1 = m(x - x1)
-                # y = (255 - 200) / (1 - 0) * (x - 0) + 200
-                # y = 55x + 200
-                # explore_map[gy, gx] = int(55 * v + 200)  # int(255 * v)
-                explore_map[gy, gx] = 255
+                explore_map[gy, gx] = int(255 * v)
 
-        gy, gx = self.get_global_coords(*self.get_game_coords(), explore_map.shape)
-        if gy >= explore_map.shape[0] or gx >= explore_map.shape[1]:
-            out = np.zeros((self.coords_pad * 2, self.coords_pad * 2), dtype=np.uint8)
-        else:
-            out = explore_map[
-                (gy - self.coords_pad) : (gy + self.coords_pad),
-                (gx - self.coords_pad) : (gx + self.coords_pad),
-            ]
-        return repeat(out, "h w -> (h h2) (w w2)", h2=2, w2=2)
+        return repeat(explore_map, "h w -> (h h2) (w w2)", h2=2, w2=2)
 
     def update_recent_screens(self, cur_screen):
         # self.recent_screens = np.roll(self.recent_screens, 1, axis=2)

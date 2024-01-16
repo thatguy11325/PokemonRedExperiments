@@ -137,12 +137,18 @@ if __name__ == "__main__":
         "frame_stacks": args.frame_stacks,
         "policy": args.policy,
         "reset_forgetting_factor": {
-            "npc": 1,
+            "npc": 0,
             "hidden_objs": 0,
-            "death": 0,
             "coords": 0,
-            "map_ids": 1
-        }
+            "map_ids": 0
+        },
+        "step_forgetting_factor": {
+            "npc": .998,
+            "hidden_objs": .998,
+            "coords": .998,
+            "map_ids": .998
+        },
+        "forgetting_frequency": 10
     }
 
     print(env_config)
@@ -167,7 +173,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(0) #args.n_envs // 8)
+            for i in range(args.n_envs // 8)
         ]
         + [
             make_env(
@@ -178,7 +184,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs) # args.n_envs // 8 * 7)
+            for i in range(args.n_envs // 8 * 7)
         ]
     )
 
