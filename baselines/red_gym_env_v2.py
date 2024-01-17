@@ -103,8 +103,8 @@ class RedGymEnv(Env):
             event_names = json.load(f)
         self.event_names = event_names
 
-        self.output_shape = (72, 80, self.frame_stacks)
-        # self.output_shape = (144, 160, self.frame_stacks)
+        # self.output_shape = (72, 80, self.frame_stacks)
+        self.output_shape = (144, 160, self.frame_stacks)
         self.coords_pad = 12
 
         # Set these in ALL subclasses
@@ -184,7 +184,7 @@ class RedGymEnv(Env):
                 self.bit_count(self.read_m(i))
                 for i in range(EVENT_FLAGS_START, EVENT_FLAGS_END)
             )
-        
+
             # lazy random seed setting
             if not seed:
                 seed = random.randint(0, 4096)
@@ -250,7 +250,7 @@ class RedGymEnv(Env):
             (k, v * self.reset_forgetting_factor["hidden_objs"])
             for k, v in self.seen_hidden_objs.items()
         )
-    
+
     def step_forget_explore(self):
         self.seen_coords.update(
             (k, v * self.step_forgetting_factor["coords"])
@@ -273,24 +273,30 @@ class RedGymEnv(Env):
         game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]  # (144, 160, 3)
         # place an overlay on top of the screen greying out places we haven't visited
         # first get our location
-        x, y, map_n = self.get_game_coords()
+        player_x, player_y, map_n = self.get_game_coords()
+        # player is anchored at the center pixel of the screen so (9, 10)
         # now map the pixels to the current screen
-        for y in range(160 // 2):
-            for x in range(144 // 2):
-                for yy in range(2):
-                    for xx in range(2):
-                        # y-y1 = m (x-x1)
-                        # map [(0,0),(1,1)] -> [(0,.5),(1,1)] (cause we dont wnat it to be fully black)
-                        # y = 1/2 x + .5
-                        game_pixels_render[y + yy][x + xx] *= (.5+.5*self.seen_coords.get((x+xx,y+yy,map_n), 0))
-        # The function cv2.imshow() is used to display an image in a window.
-        cv2.imshow('graycsale image', game_pixels_render)
-        
-        # waitKey() waits for a key press to close the window and 0 specifies indefinite loop
-        cv2.waitKey(0)
-        
-        # cv2.destroyAllWindows() simply destroys all the windows we created.
-        cv2.destroyAllWindows()
+        for y in range(144 // 8):
+            for x in range(160 // 8):
+                # y-y1 = m (x-x1)
+                # map [(0,0),(1,1)] -> [(0,.5),(1,1)] (cause we dont wnat it to be fully black)
+                # y = 1/2 x + .5
+                # current location tiles - player_y*8, player_x*8
+                game_pixels_render[(8 * y) : (8 * y + 8), (8 * x) : (8 * x + 8)] = (
+                    game_pixels_render[(8 * y) : (8 * y + 8), (8 * x) : (8 * x + 8)]
+                    * (
+                        0.5
+                        + 0.5
+                        * self.seen_coords.get(
+                            (
+                                player_x - 10 + x + 1,
+                                player_y - 9 + y + 1,
+                                map_n,
+                            ),
+                            0,
+                        )
+                    )
+                ).astype(np.uint8)
 
         if reduce_res:
             # game_pixels_render = (
@@ -336,7 +342,10 @@ class RedGymEnv(Env):
 
         # counter intuitive but we short circuit on the step count
         # to avoid a more expensive read_m of is in battle
-        if self.step_count % self.forgetting_frequency == 0 and self.read_m(0xd057) == 0:
+        if (
+            self.step_count % self.forgetting_frequency == 0
+            and self.read_m(0xD057) == 0
+        ):
             self.step_forget_explore()
 
         self.run_action_on_emulator(action)

@@ -81,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--n-envs", type=int, default=multiprocessing.cpu_count())
     parser.add_argument("--wandb-api-key", type=str, default=None)
     parser.add_argument("--wandb", action="store_true")
-    parser.add_argument("--ep-length", type=int, default=32768)
+    parser.add_argument("--ep-length", type=int, default=2048*10)
     parser.add_argument("--sess-id", type=str, default=str(uuid.uuid4())[:8])
     parser.add_argument("--save-video", action="store_true")
     parser.add_argument("--fast-video", action="store_true")
@@ -173,7 +173,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs // 8)
+            for i in range(0) #args.n_envs // 8)
         ]
         + [
             make_env(
@@ -184,7 +184,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(args.n_envs // 8 * 7)
+            for i in range(1) # args.n_envs // 8 * 7)
         ]
     )
 
