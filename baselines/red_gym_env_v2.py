@@ -5,7 +5,6 @@ from collections import deque
 from pathlib import Path
 from typing import Optional
 
-import cv2
 import matplotlib.pyplot as plt
 import mediapy as media
 import numpy as np
