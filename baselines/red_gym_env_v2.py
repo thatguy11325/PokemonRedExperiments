@@ -103,7 +103,8 @@ class RedGymEnv(Env):
         self.event_names = event_names
 
         # self.output_shape = (72, 80, self.frame_stacks)
-        self.output_shape = (144, 160, self.frame_stacks)
+        # self.output_shape = (144, 160, self.frame_stacks)
+        self.output_shape = (144, 160, self.frame_stacks * 2)
         self.coords_pad = 12
 
         # Set these in ALL subclasses
@@ -223,6 +224,8 @@ class RedGymEnv(Env):
         return self._get_obs(), {}
 
     def init_map_mem(self):
+        # Maybe I should preallocate a giant matrix for all map ids
+        # All map ids have the same size, right?
         self.seen_coords = {}
         self.seen_map_ids = {}
 
@@ -269,7 +272,9 @@ class RedGymEnv(Env):
         )
 
     def render(self, reduce_res=False):
-        game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]  # (144, 160, 3)
+        # (144, 160, 3)
+        game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]
+        visited_mask = np.zeros_like(game_pixels_render)
         # place an overlay on top of the screen greying out places we haven't visited
         # first get our location
         player_x, player_y, map_n = self.get_game_coords()
@@ -281,8 +286,8 @@ class RedGymEnv(Env):
                 # map [(0,0),(1,1)] -> [(0,.5),(1,1)] (cause we dont wnat it to be fully black)
                 # y = 1/2 x + .5
                 # current location tiles - player_y*8, player_x*8
-                game_pixels_render[(8 * y) : (8 * y + 8), (8 * x) : (8 * x + 8)] = (
-                    game_pixels_render[(8 * y) : (8 * y + 8), (8 * x) : (8 * x + 8)]
+                visited_mask[(8 * y) : (8 * y + 8), (8 * x) : (8 * x + 8), :] = int(
+                    255
                     * (
                         0.5
                         + 0.5
@@ -295,7 +300,8 @@ class RedGymEnv(Env):
                             0,
                         )
                     )
-                ).astype(np.uint8)
+                )
+        game_pixels_render = np.stack([game_pixels_render, visited_mask], axis=-1)
 
         if reduce_res:
             # game_pixels_render = (

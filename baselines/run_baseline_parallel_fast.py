@@ -173,7 +173,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(0) #args.n_envs // 8)
+            for i in range(args.n_envs // 8)
         ]
         + [
             make_env(
@@ -184,7 +184,7 @@ if __name__ == "__main__":
                 if args.seed_style == "random"
                 else 4096 * i // 4,
             )
-            for i in range(1) # args.n_envs // 8 * 7)
+            for i in range(args.n_envs // 8 * 7)
         ]
     )
 
