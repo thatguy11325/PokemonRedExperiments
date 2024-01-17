@@ -5,6 +5,7 @@ from collections import deque
 from pathlib import Path
 from typing import Optional
 
+import cv2
 import matplotlib.pyplot as plt
 import mediapy as media
 import numpy as np
@@ -268,8 +269,29 @@ class RedGymEnv(Env):
             for k, v in self.seen_hidden_objs.items()
         )
 
-    def render(self, reduce_res=True):
+    def render(self, reduce_res=False):
         game_pixels_render = self.screen.screen_ndarray()[:, :, 0:1]  # (144, 160, 3)
+        # place an overlay on top of the screen greying out places we haven't visited
+        # first get our location
+        x, y, map_n = self.get_game_coords()
+        # now map the pixels to the current screen
+        for y in range(160 // 2):
+            for x in range(144 // 2):
+                for yy in range(2):
+                    for xx in range(2):
+                        # y-y1 = m (x-x1)
+                        # map [(0,0),(1,1)] -> [(0,.5),(1,1)] (cause we dont wnat it to be fully black)
+                        # y = 1/2 x + .5
+                        game_pixels_render[y + yy][x + xx] *= (.5+.5*self.seen_coords.get((x+xx,y+yy,map_n), 0))
+        # The function cv2.imshow() is used to display an image in a window.
+        cv2.imshow('graycsale image', game_pixels_render)
+        
+        # waitKey() waits for a key press to close the window and 0 specifies indefinite loop
+        cv2.waitKey(0)
+        
+        # cv2.destroyAllWindows() simply destroys all the windows we created.
+        cv2.destroyAllWindows()
+
         if reduce_res:
             # game_pixels_render = (
             #     downscale_local_mean(game_pixels_render, (2, 2, 1))
