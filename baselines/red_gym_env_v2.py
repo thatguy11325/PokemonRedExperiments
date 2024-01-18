@@ -278,29 +278,49 @@ class RedGymEnv(Env):
         # place an overlay on top of the screen greying out places we haven't visited
         # first get our location
         player_x, player_y, map_n = self.get_game_coords()
-        # player is anchored at the center pixel of the screen so (9, 10)
-        # now map the pixels to the current screen
-        for y in range(144 // 8):
-            for x in range(160 // 8):
+        """
+        map_height = self.read_m(0xD524)
+        map_width = self.read_m(0xD525)
+
+        print(
+            self.read_m(0xC6EF),
+            self.read_m(0xD524),
+            self.read_m(0xD525),
+            player_y,
+            player_x,
+        """
+
+        # player is centered at 68, 72 in pixel units
+        # 68 -> player y, 72 -> player x
+        # guess we want to attempt to map the pixels to player units or vice versa
+        # Experimentally determined magic numbers below. Beware
+
+        for y in range(-72 // 16, 72 // 16):
+            for x in range(-80 // 16, 80 // 16):
                 # y-y1 = m (x-x1)
                 # map [(0,0),(1,1)] -> [(0,.5),(1,1)] (cause we dont wnat it to be fully black)
                 # y = 1/2 x + .5
                 # current location tiles - player_y*8, player_x*8
-                visited_mask[(8 * y) : (8 * y + 8), (8 * x) : (8 * x + 8), :] = int(
+                visited_mask[
+                    16 * y + 76 : 16 * y + 16 + 76,
+                    16 * x + 80 : 16 * x + 16 + 80,
+                    :,
+                ] = int(
                     255
                     * (
                         0.5
                         + 0.5
                         * self.seen_coords.get(
                             (
-                                player_x - 10 + x + 1,
-                                player_y - 9 + y + 1,
+                                player_x + x + 1,
+                                player_y + y + 1,
                                 map_n,
                             ),
                             0,
                         )
                     )
                 )
+
         game_pixels_render = np.stack([game_pixels_render, visited_mask], axis=-1)
 
         if reduce_res:
