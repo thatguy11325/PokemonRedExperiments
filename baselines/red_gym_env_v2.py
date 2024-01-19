@@ -453,7 +453,7 @@ class RedGymEnv(Env):
         self.action_hist[action] += 1
 
         # press button then release after some steps
-        # self.pyboy.send_input(self.valid_actions[action])
+        self.pyboy.send_input(self.valid_actions[action])
         # disable rendering when we don't need it
         if not self.save_video and self.headless:
             self.pyboy._rendering(False)
