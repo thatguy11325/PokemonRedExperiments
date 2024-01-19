@@ -308,9 +308,7 @@ class RedGymEnv(Env):
                 ] = int(
                     255
                     * (
-                        0.5
-                        + 0.5
-                        * self.seen_coords.get(
+                        self.seen_coords.get(
                             (
                                 player_x + x + 1,
                                 player_y + y + 1,
@@ -455,7 +453,7 @@ class RedGymEnv(Env):
         self.action_hist[action] += 1
 
         # press button then release after some steps
-        self.pyboy.send_input(self.valid_actions[action])
+        # self.pyboy.send_input(self.valid_actions[action])
         # disable rendering when we don't need it
         if not self.save_video and self.headless:
             self.pyboy._rendering(False)
